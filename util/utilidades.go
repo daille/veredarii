@@ -1,3 +1,6 @@
+package util
+
+/*
 MIT License
 
 Copyright (c) 2025 Juan Carlos Daille
@@ -19,3 +22,30 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
+import (
+	"fmt"
+	"os"
+)
+
+func SaveFile(name string, body string) {
+	f, err := os.Create(name)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	l, err := f.WriteString(body)
+	if err != nil {
+		fmt.Println(err)
+		f.Close()
+		return
+	}
+
+	fmt.Println(l, "bytes written successfully")
+	err = f.Close()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}

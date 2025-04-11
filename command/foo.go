@@ -1,3 +1,6 @@
+package command
+
+/*
 MIT License
 
 Copyright (c) 2025 Juan Carlos Daille
@@ -19,3 +22,21 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
+import (
+	"github.com/spf13/cobra"
+)
+
+var fooCmd = &cobra.Command{
+	Use:   "foo",
+	Short: "foo",
+	Long:  `.`,
+	Args:  cobra.RangeArgs(0, 1),
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(fooCmd)
+}

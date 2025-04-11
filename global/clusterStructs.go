@@ -1,3 +1,6 @@
+package global
+
+/*
 MIT License
 
 Copyright (c) 2025 Juan Carlos Daille
@@ -19,3 +22,28 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
+
+type NodoMetaData struct {
+	ID       string `json:"id"`
+	Country  string `json:"country"`
+	Organism string `json:"organism"`
+	System   string `json:"system"`
+}
+
+type ClusterDataType struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	EndpointJoin string `json:"endpoint_join"`
+	ClusterKey   []byte `json:"cluster_key"`
+	MessageKey   string `json:"message_key"`
+	Port         string `json:"port"`
+}
+
+type MemberDataType struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Endpoints   string `json:"endpoint_join"`
+	ClusterKey  []byte `json:"cluster_key"`
+	Port        string `json:"port"`
+}
