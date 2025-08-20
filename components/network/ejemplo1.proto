@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package ejemplo;
+
+option go_package = "ejemplo/pb;pb";
+
+message Mensaje {
+  string texto = 1;
+  int32 numero = 2;
+}
