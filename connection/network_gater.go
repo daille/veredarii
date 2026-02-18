@@ -31,15 +31,15 @@ import (
 )
 
 type MiGater struct {
-	whitelist map[peer.ID]bool
+	peers map[peer.ID]PeerType
 }
 
 func (g *MiGater) InterceptPeerDial(p peer.ID) bool {
-	return true //g.whitelist[p]
+	return true //g.peers[p]
 }
 
 func (g *MiGater) InterceptAddrDial(p peer.ID, m multiaddr.Multiaddr) bool {
-	return true //g.whitelist[p]
+	return true //g.peers[p]
 }
 
 func (g *MiGater) InterceptAccept(n network.ConnMultiaddrs) bool {

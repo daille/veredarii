@@ -29,6 +29,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ type Network struct {
 	Host            host.Host
 	Port            string
 	SwarmKey        string
+	JoinKey         string
 	Pivots          []string
 	Address         []string
 	Resources       global.ResourcesType
@@ -61,11 +63,18 @@ type Network struct {
 	Topics          []global.TopicType
 	Entities        []global.KVType
 	//
-	SesionesActivas map[peer.ID]string
-	MutexSesiones   sync.RWMutex
-	MasterEntities  map[string]crypto.PubKey
-	Whitelist       map[peer.ID]bool
-	DHT             *dht.IpfsDHT
+	SesionesActivas    map[peer.ID]string
+	MutexSesiones      sync.RWMutex
+	MasterEntities     map[string]crypto.PubKey
+	Peers              map[peer.ID]PeerType
+	DHT                *dht.IpfsDHT
+	NetworkMemberTopic *pubsub.Topic
+}
+
+type PeerType struct {
+	ID     peer.ID
+	PubKey crypto.PubKey
+	Entity string
 }
 
 func NewNetwork(name string, port string, swarmKey string, pivots []string, address []string, topics []global.TopicType, entities []global.KVType, resources global.ResourcesType, remoteResources global.ResourcesType) *Network {
@@ -73,6 +82,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		Name:            name,
 		Port:            port,
 		SwarmKey:        swarmKey,
+		JoinKey:         ":",
 		Pivots:          pivots,
 		Address:         address,
 		Topics:          topics,
@@ -82,7 +92,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		SesionesActivas: make(map[peer.ID]string),
 		MutexSesiones:   sync.RWMutex{},
 		MasterEntities:  map[string]crypto.PubKey{},
-		Whitelist:       map[peer.ID]bool{},
+		Peers:           map[peer.ID]PeerType{},
 	}
 
 	return &N
@@ -91,7 +101,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 func (n *Network) Connect() {
 	psk, priv := n.LoadConfig()
 	n.cargarWhitelist()
-	miGater := &MiGater{whitelist: n.Whitelist}
+	miGater := &MiGater{peers: n.Peers}
 
 	rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()))
 	if err != nil {
@@ -138,13 +148,16 @@ func (n *Network) Connect() {
 	go n.MonitorConnections(priv)
 	n.initDHT()
 
+	// Protocolos de funcionamiento de la red
 	n.Host.SetStreamHandler(global.ProtocolAuth, n.handleAuthStream)
-	n.Host.SetStreamHandler(global.ProtocolChat, n.handleChatStream)
+	n.Host.SetStreamHandler(global.ProtocolJoin, n.handleJoinStream)
+	// Protocolos de comunicación
 	n.Host.SetStreamHandler(global.ProtocolAPIProxy, n.handleAPIProxyStream)
 	n.Host.SetStreamHandler(global.ProtocolFileSystem, n.handleFileFetch)
 	n.Host.SetStreamHandler(global.ProtocolFileSystemStat, n.handleFileStat)
 	n.Host.SetStreamHandler(global.ProtocolQuery, n.HandleSearch)
 	go n.FileSystem()
+	go n.InitBroadcast()
 
 	fmt.Println("\nServidor esperando conexiones...")
 	select {}
@@ -154,7 +167,7 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 	for {
 		peerCount := len(n.Host.Network().Peers())
 
-		if peerCount == 0 {
+		if peerCount == 0 && n.Pivots != nil {
 			log.Warn("¡Nodo aislado! Reconectando a los pivotes...")
 			for _, addr := range n.Pivots {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -177,10 +190,16 @@ func (n *Network) InitBroadcast() {
 	ctx := context.Background()
 	ps, err := pubsub.NewGossipSub(ctx, n.Host)
 	if err != nil {
-		panic(err)
+		log.Error("Error al crear el pubsub:", err)
 	}
-	topic, err := ps.Join("anuncios-globales")
-	sub, err := topic.Subscribe()
+	n.NetworkMemberTopic, err = ps.Join("members")
+	if err != nil {
+		log.Error("Error al unirse al topic:", err)
+	}
+	sub, err := n.NetworkMemberTopic.Subscribe()
+	if err != nil {
+		log.Error("Error al suscribirse al topic:", err)
+	}
 
 	go func() {
 		preKey := sha256.Sum256([]byte(n.SwarmKey))
@@ -188,15 +207,31 @@ func (n *Network) InitBroadcast() {
 		for {
 			msg, err := sub.Next(ctx)
 			if err != nil {
-				fmt.Println(err)
+				log.Error("Error al recibir el mensaje:", err)
 				continue
 			}
 			descifrado, err := global.Decrypt(msg.Data, key)
 			if err != nil {
-				fmt.Println("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
+				log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
 				continue
 			}
 			fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
+
+			var joinRequest JoinRequest
+			err = json.Unmarshal(descifrado, &joinRequest)
+			if err != nil {
+				log.Error("❌ Error deserializando solicitud:", err)
+				return
+			}
+			log.Info("Solicitud deserializada:", joinRequest.EntityName)
+			pubKey, err := global.ParsePubKeyRecibida(joinRequest.PublicKey)
+			if err != nil {
+				log.Error("❌ Error decodificando llave publica:", err)
+				return
+			}
+			n.MutexSesiones.Lock()
+			n.MasterEntities[joinRequest.EntityName] = pubKey
+			n.MutexSesiones.Unlock()
 		}
 	}()
 
@@ -207,6 +242,7 @@ func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
 
 	record.RegisterType(&EntidadRecord{})
 	for _, entity := range n.Entities {
+		log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", entity.Name, entity.Key))
 		pubKeyRaw, err := hex.DecodeString(entity.Key)
 		if err != nil {
 			log.Fatalf("Error al decodificar hexadecimal: %v", err)
@@ -218,7 +254,7 @@ func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
 		n.MasterEntities[entity.Name] = pkb
 	}
 
-	priv, err := n.obtenerIdentidad(configuration.CM.GetConfig().Identity.PrivKeyFile)
+	priv, err := global.ObtenerIdentidad(configuration.CM.GetConfig().Identity.PrivKeyFile)
 	if err != nil {
 		log.Fatal("Error con la identidad:", err)
 	}

@@ -124,9 +124,11 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 			})
 		}
 
-		for _, addr := range connection.NM.Networks["red_interoperabilidad"].Host.Addrs() {
-			if !manet.IsPublicAddr(addr) {
-				iplocal = addr.String()
+		if connection.NM.Networks[network.Name].Host != nil {
+			for _, addr := range connection.NM.Networks[network.Name].Host.Addrs() {
+				if !manet.IsPublicAddr(addr) {
+					iplocal = addr.String()
+				}
 			}
 		}
 

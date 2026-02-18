@@ -35,7 +35,6 @@ type TopicType struct {
 
 type IdentityType struct {
 	Entity      string `json:"entity"`
-	Firma       string `json:"firma"`
 	PrivKeyFile string `json:"priv_key_file"`
 }
 
@@ -58,16 +57,16 @@ type ConfigType struct {
 }
 
 type NetworkType struct {
-	Port                string      `json:"port"`
-	FS                  string      `json:"fs"`
-	Name                string      `json:"name"`
-	Pivots              []string    `json:"pivots"`
-	NetworkKey          string      `json:"network_key"`
-	MyAddress           []string    `json:"myAddress"`
-	Entities            []KVType    `json:"entities"`
-	Topics              []TopicType `json:"topics"`
-	RemoteResourcesPath string      `json:"remote_resources"`
-	RemoteResources     ResourcesType
-	ResourcesPath       string `json:"resources"`
-	Resources           ResourcesType
+	Port                string        `json:"port"`
+	FS                  string        `json:"filesystem"`
+	Name                string        `json:"name"`
+	Pivots              []string      `json:"pivots"`
+	NetworkKey          string        `json:"network_key"`
+	MyAddress           []string      `json:"myAddress"`
+	Entities            []KVType      `json:"entities"`
+	Topics              []TopicType   `json:"topics"`
+	RemoteResourcesPath string        `json:"remote_resources"`
+	RemoteResources     ResourcesType `json:"-"`
+	ResourcesPath       string        `json:"resources"`
+	Resources           ResourcesType `json:"-"`
 }

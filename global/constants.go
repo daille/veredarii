@@ -24,8 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 const (
+	ProtocolJoin           = "/join/1.0.0"
 	ProtocolAuth           = "/auth/1.0.0"
-	ProtocolChat           = "/chat/1.0.0"
 	ProtocolAPIProxy       = "/api-proxy/1.0.0"
 	ProtocolFileSystem     = "/file-system/1.0.0"
 	ProtocolFileSystemStat = "/file-system/stat/1.0.0"

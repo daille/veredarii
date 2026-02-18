@@ -14,6 +14,7 @@ require (
 	github.com/libp2p/go-libp2p-pubsub v0.15.0
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/multiformats/go-multiaddr v0.16.1
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.10.2
 	github.com/x-cray/logrus-prefixed-formatter v0.5.2

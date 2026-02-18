@@ -37,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -45,10 +46,23 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 )
 
+var cache = NonceCache{firmas: make(map[string]time.Time)}
+
+type NonceCache struct {
+	sync.RWMutex
+	firmas map[string]time.Time
+}
+
+type EnvioMasterEntities struct {
+	Entities map[string][]byte `json:"entities"`
+}
+
 type EntidadRecord struct {
+	ID         string  `json:"id"`
 	EntityName string  `json:"entity"`
 	PeerID     peer.ID `json:"peer_id"`
-	Signature  []byte  `json:"signature"`
+	//ExpiresAt  int64   `json:"expires_at"`
+	Signature []byte `json:"signature"`
 }
 
 func (r *EntidadRecord) Domain() string                 { return "pisee-auth-v1" }
@@ -91,21 +105,26 @@ func (n *Network) handleAuthStream(s network.Stream) {
 	n.SesionesActivas[remotePeer] = "usuario_verificado"
 	n.MutexSesiones.Unlock()
 
-	s.Write([]byte{1})
+	resp, err := SerializarMasterEntities(n.MasterEntities)
+	if err != nil {
+		fmt.Println("Error serializando master entities:", err)
+		s.Write([]byte{0})
+		s.Reset()
+		return
+	}
+	s.Write(resp)
 	fmt.Println(" ACEPTADO.")
 }
 
 func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID peer.ID) error {
 
-	firmaDeLaEntidad, err := hex.DecodeString(configuration.CM.GetConfig().Identity.Firma)
+	rec, err := FirmarRecordConULID(
+		configuration.CM.GetConfig().Identity.Entity,
+		n.Host.ID(),
+		time.Hour,
+	)
 	if err != nil {
-		log.Fatal("Error decodificando la firma hex:", err)
-	}
-
-	rec := &EntidadRecord{
-		EntityName: configuration.CM.GetConfig().Identity.Entity,
-		PeerID:     n.Host.ID(),
-		Signature:  firmaDeLaEntidad,
+		log.Fatal("Error firmando el record:", err)
 	}
 
 	// Sellar el sobre con la llave privada del cliente
@@ -136,39 +155,106 @@ func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID p
 	if _, err := rw.Writer.Write(envelopeBytes); err != nil {
 		return err
 	}
+	log.Debug(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
 	fmt.Println("Autenticación enviada. Esperando validación...")
 	rw.Flush()
 
 	// Leer respuesta del servidor
-	resp := make([]byte, 1)
-	_, err = sAuth.Read(resp)
-
-	if err != nil || resp[0] != 1 {
-		fmt.Println("❌ El servidor rechazó la autenticación")
+	resp, err := io.ReadAll(sAuth)
+	if err != nil {
+		log.Fatal(err)
+	}
+	masterEntities, err := DeserializarMasterEntities(resp)
+	if err != nil {
+		log.Error("Error deserializando master entities:", err)
 		return err
 	}
+	fmt.Println("✅ El servidor aceptó la autenticación", masterEntities)
+
+	n.MutexSesiones.Lock()
+	for nombre, key := range masterEntities {
+		n.MasterEntities[nombre] = key
+	}
+	n.MutexSesiones.Unlock()
 	sAuth.Close()
 
 	return nil
 }
 
-// --- FUNCIONES DE SOPORTE ---
-func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
-	var length uint32
-	if err := binary.Read(rw.Reader, binary.BigEndian, &length); err != nil {
-		return nil, fmt.Errorf("error longitud: %w", err)
-	}
-	buf := make([]byte, length)
-	if _, err := io.ReadFull(rw.Reader, buf); err != nil {
-		return nil, fmt.Errorf("error leyendo bytes: %w", err)
+func DeserializarMasterEntities(data []byte) (map[string]crypto.PubKey, error) {
+	var transporte EnvioMasterEntities
+	if err := json.Unmarshal(data, &transporte); err != nil {
+		return nil, err
 	}
 
-	envelope, err := record.UnmarshalEnvelope(buf)
+	master := make(map[string]crypto.PubKey)
+	for nombre, keyBytes := range transporte.Entities {
+		// Reconstruimos la interfaz PubKey desde los bytes
+		pubKey, err := crypto.UnmarshalPublicKey(keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		master[nombre] = pubKey
+	}
+
+	return master, nil
+}
+
+func FirmarRecordConULID(name string, pID peer.ID, ttl time.Duration) (*EntidadRecord, error) {
+
+	privKey, err := obtenerMasterKey(configuration.CM.GetConfig().Identity.PrivKeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("error al deserializar sobre (wire-format): %w", err)
+		return nil, fmt.Errorf("no se pudo cargar la llave privada: %w", err)
+	}
+	id := ulid.Make().String()
+	//expiration := time.Now().Add(ttl).Unix()
+	//dataToSign := fmt.Sprintf("%s:%s:%s:%d", id, name, pID.String(), expiration)
+	//sigBytes := ed25519.Sign(privKey, []byte(dataToSign))
+
+	// 3. Firmar usando la interfaz de libp2p
+	msgAuth := []byte(fmt.Sprintf("%s:%s:%s", id, name, pID.String()))
+	signature, err := privKey.Sign(msgAuth) // Esto devuelve []byte
+	pkb_auto := privKey.GetPublic()
+	valid, err := pkb_auto.Verify(msgAuth, signature)
+	if err != nil {
+		log.Fatalf("Error al verificar firma: %v", err)
 	}
 
-	return envelope, nil
+	pubKeyRaw, err := hex.DecodeString("080112202c06e7dbf218d0f26edb337c1e5f90dbc3f729bc2e08feb0a78863c1782e62af")
+	if err != nil {
+		log.Fatalf("Error al decodificar hexadecimal: %v", err)
+	}
+	pkb, err := crypto.UnmarshalPublicKey(pubKeyRaw)
+	if err != nil {
+		log.Fatalf("Error al procesar llave pública: %v", err)
+	}
+
+	valid, err = pkb.Verify(msgAuth, signature)
+	if !valid {
+		log.Debug("Firma inválida")
+	} else {
+		log.Debug("Firma válida")
+	}
+
+	return &EntidadRecord{
+		ID:         id,
+		EntityName: name,
+		PeerID:     pID,
+		//ExpiresAt:  expiration,
+		Signature: signature,
+	}, nil
+}
+
+func obtenerMasterKey(ruta string) (crypto.PrivKey, error) {
+	rawBytes, err := os.ReadFile(ruta)
+	if err != nil {
+		return nil, err
+	}
+	// Si el archivo tiene el prefijo 08011240 (libp2p protobuf)
+	if len(rawBytes) > 64 {
+		rawBytes = rawBytes[len(rawBytes)-64:]
+	}
+	return crypto.UnmarshalEd25519PrivateKey(rawBytes)
 }
 
 func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*EntidadRecord, error) {
@@ -198,11 +284,23 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 	}
 
 	masterPubKey, existe := n.MasterEntities[rec.EntityName]
-	if !existe || masterPubKey == nil {
+	if existe {
+		mpk, _ := masterPubKey.Raw()
+		log.Debug("Master: ", rec.EntityName, " : ", hex.EncodeToString(mpk))
+		log.Debug(fmt.Sprintf("Verificando entidad '%s' con llave pública '%s'", rec.EntityName, masterPubKey))
+		if !existe || masterPubKey == nil {
+			return nil, fmt.Errorf("la entidad '%s' no está configurada o su llave pública es nula", rec.EntityName)
+		}
+	} else {
 		return nil, fmt.Errorf("la entidad '%s' no está configurada o su llave pública es nula", rec.EntityName)
 	}
 
-	msgAuth := []byte(rec.PeerID.String() + rec.EntityName)
+	log.Debug(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
+	msgAuth := []byte(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
+	log.Debug(fmt.Sprintf("SERVER PAYLOAD HEX: %x", []byte(msgAuth)))
+	log.Debug(fmt.Sprintf("SERVER SIG HEX: %x", rec.Signature))
+
+	// 4. Verificar
 	valid, err := masterPubKey.Verify(msgAuth, rec.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("error al ejecutar verificación de firma: %w", err)
@@ -215,46 +313,8 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 }
 
 func (n *Network) cargarWhitelist() {
-	ids := []string{
-		"12D3KooWAkCUB7wJ1p8748BFFDZS1Vdx5N2ywp8BDh34jcrBPudA",
-		"12D3KooWEdjx22FMtiWYuH7AAn365doDrAZN2GnttpnmEfPvs8hh",
-		"12D3KooWEgeYgNpgnbVFP3hyCog1kLF7RbmD1XmiopWjkaCtnV2b",
-	}
 
-	for _, s := range ids {
-		id, err := peer.Decode(s)
-		if err != nil {
-			log.Printf("Error decodificando PeerID %s: %v", s, err)
-			continue
-		}
-		n.Whitelist[id] = true
-	}
 }
-
-func (n *Network) obtenerIdentidad(path string) (crypto.PrivKey, error) {
-	data, err := os.ReadFile(path)
-	if err == nil {
-		return crypto.UnmarshalPrivateKey(data)
-	}
-	fmt.Println("Generando nueva identidad...")
-	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
-	if err != nil {
-		return nil, err
-	}
-	data, err = crypto.MarshalPrivateKey(priv)
-	if err != nil {
-		return nil, err
-	}
-	err = os.WriteFile(path, data, 0600)
-	return priv, err
-}
-
-type NonceCache struct {
-	sync.RWMutex
-	firmas map[string]time.Time
-}
-
-var cache = NonceCache{firmas: make(map[string]time.Time)}
 
 func esReplay(firma []byte) bool {
 	cache.Lock()
@@ -275,4 +335,21 @@ func limpiarCache() {
 		}
 		cache.Unlock()
 	}
+}
+
+func SerializarMasterEntities(master map[string]crypto.PubKey) ([]byte, error) {
+	transporte := EnvioMasterEntities{
+		Entities: make(map[string][]byte),
+	}
+
+	for nombre, pubKey := range master {
+		// Convertimos la PubKey al formato estándar de libp2p (Protobuf)
+		keyBytes, err := crypto.MarshalPublicKey(pubKey)
+		if err != nil {
+			return nil, err
+		}
+		transporte.Entities[nombre] = keyBytes
+	}
+
+	return json.Marshal(transporte)
 }

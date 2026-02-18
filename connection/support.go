@@ -25,55 +25,28 @@ SOFTWARE.
 */
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
-	"log"
-	"os"
+	"io"
 
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/record"
 )
 
-func (n *Network) handleChatStream(s network.Stream) {
-	remotePeer := s.Conn().RemotePeer()
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	go n.readChats(rw, remotePeer)
-}
-
-func (n *Network) readChats(rw *bufio.ReadWriter, remotePeer peer.ID) {
-	for {
-		str, err := rw.ReadString('\n')
-		if err != nil {
-			fmt.Printf("[Error] Peer %s desconectado\n", remotePeer)
-			return
-		}
-
-		if str != "\n" {
-			fmt.Printf("[Mensaje de %s]: %s", remotePeer, str)
-		}
+// --- FUNCIONES DE SOPORTE ---
+func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
+	var length uint32
+	if err := binary.Read(rw.Reader, binary.BigEndian, &length); err != nil {
+		return nil, fmt.Errorf("error longitud: %w", err)
 	}
-}
-
-func (n *Network) writeChats(rw *bufio.ReadWriter) {
-	stdReader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("> ")
-		sendData, err := stdReader.ReadString('\n')
-		if err != nil {
-			log.Println("Error leyendo de stdin:", err)
-			return
-		}
-
-		_, err = rw.WriteString(sendData)
-		if err != nil {
-			log.Println("Error escribiendo al peer:", err)
-			return
-		}
-
-		err = rw.Flush()
-		if err != nil {
-			log.Println("Error haciendo flush:", err)
-			return
-		}
+	buf := make([]byte, length)
+	if _, err := io.ReadFull(rw.Reader, buf); err != nil {
+		return nil, fmt.Errorf("error leyendo bytes: %w", err)
 	}
+
+	envelope, err := record.UnmarshalEnvelope(buf)
+	if err != nil {
+		return nil, fmt.Errorf("error al deserializar sobre (wire-format): %w", err)
+	}
+
+	return envelope, nil
 }

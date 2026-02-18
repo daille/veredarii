@@ -1,5 +1,7 @@
 package global
 
+import "time"
+
 /*
 MIT License
 
@@ -32,4 +34,13 @@ type ResourcesType struct {
 type ResourceType struct {
 	Name         string `json:"name"`
 	ResourcePath string `json:"resource_path"`
+}
+
+type InvitacionType struct {
+	Inviter    string
+	PeerID     string
+	Guest      string
+	Network    string
+	Expiration time.Time
+	Signature  string
 }

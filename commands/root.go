@@ -24,9 +24,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/cobra"
 )
 
@@ -36,6 +38,12 @@ var rootCmd = &cobra.Command{
 	Long:  `Veredarii de Interoperabilidad de PISEE 2`,
 }
 
+var network string
+var entity string
+var file string
+var port string
+var inviter string
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -43,10 +51,23 @@ func Execute() {
 	}
 }
 
-func init() {
+// ================================================================
 
-}
+func GenerateEntityKeys() ([]byte, []byte, error) {
+	priv, pub, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
 
-func initConfig() {
+	privBytes, err := priv.Raw()
+	if err != nil {
+		return nil, nil, err
+	}
 
+	pubBytes, err := crypto.MarshalPublicKey(pub)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return privBytes, pubBytes, nil
 }

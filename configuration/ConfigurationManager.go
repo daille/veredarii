@@ -37,7 +37,7 @@ type ConfigurationManager struct {
 	Config *global.ConfigType
 }
 
-const filename = "config.json"
+const ConfigFilename = "config.json"
 
 func NewConfigurationManager() *ConfigurationManager {
 	return &ConfigurationManager{
@@ -47,22 +47,26 @@ func NewConfigurationManager() *ConfigurationManager {
 
 func (cm *ConfigurationManager) LoadConfig() error {
 	var err error
-	if err = cm.loadJson(filename, cm.Config); err != nil {
+	if err = cm.loadJson(ConfigFilename, cm.Config); err != nil {
 		log.Error("Error cargando configuracion:", err)
 		return err
 	}
 
 	for idx, network := range cm.Config.Networks {
 		// resources
-		if err = cm.loadJson(network.ResourcesPath, &cm.Config.Networks[idx].Resources); err != nil {
-			log.Error("Error cargando recursos:", err)
-			return err
+		if network.ResourcesPath != "" {
+			if err = cm.loadJson(network.ResourcesPath, &cm.Config.Networks[idx].Resources); err != nil {
+				log.Error("Error cargando recursos:", err)
+				return err
+			}
 		}
 
 		// remote resources
-		if err = cm.loadJson(network.RemoteResourcesPath, &cm.Config.Networks[idx].RemoteResources); err != nil {
-			log.Error("Error cargando recursos remotos:", err)
-			return err
+		if network.RemoteResourcesPath != "" {
+			if err = cm.loadJson(network.RemoteResourcesPath, &cm.Config.Networks[idx].RemoteResources); err != nil {
+				log.Error("Error cargando recursos remotos:", err)
+				return err
+			}
 		}
 	}
 
