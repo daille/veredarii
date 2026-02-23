@@ -29,11 +29,13 @@ import (
 	"Veredarii/global"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -41,6 +43,8 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/cobra"
 )
+
+const separator = "|"
 
 // 2. Comando Padre: entity
 var networkCmd = &cobra.Command{
@@ -87,7 +91,9 @@ var inviteCmd = &cobra.Command{
 			fmt.Println("Error al crear el directorio:", err)
 			return
 		}
-		err = os.WriteFile("./invitations/"+network+"."+entity+".vni", []byte(token), 0644)
+		pivot := base64.StdEncoding.EncodeToString([]byte(configuration.CM.GetConfig().Networks[0].Pivots[0]))
+		vni := []byte(token + separator + pivot)
+		err = os.WriteFile("./invitations/"+network+"."+entity+".vni", vni, 0644)
 		if err != nil {
 			fmt.Println("Error al escribir el archivo:", err)
 			return
@@ -211,8 +217,8 @@ var joinCmd = &cobra.Command{
 	Use:   "join",
 	Short: "Une a la red",
 	Run: func(cmd *cobra.Command, args []string) {
-		if network == "" || entity == "" || inviter == "" || file == "" {
-			fmt.Println("❌ Error: Se requieren las flags --network, --entity y --invitation")
+		if network == "" || entity == "" || inviter == "" || file == "" || key == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network, --entity, --invitation, --inviter y --key")
 			return
 		}
 
@@ -226,8 +232,20 @@ var joinCmd = &cobra.Command{
 			fmt.Println("❌ Error al leer el archivo:", err)
 			return
 		}
-		invitation := string(invBytes)
+		cruda := string(invBytes)
 		inv.Close()
+		both := strings.Split(cruda, separator)
+		if len(both) < 2 {
+			fmt.Println("❌ Error: El archivo de invitación no es válido")
+			return
+		}
+		invitation := both[0]
+		pivotEncoded := strings.ReplaceAll(both[1], "\n", "")
+		pivot, err := base64.StdEncoding.DecodeString(pivotEncoded)
+		if err != nil {
+			fmt.Println("❌ Error al decodificar el pivot:", err)
+			return
+		}
 
 		// Crea llaves de la entidad (si aun no tiene) o usa las existentes
 		privateKey, err := global.ObtenerIdentidad("./" + entity + ".key")
@@ -238,8 +256,7 @@ var joinCmd = &cobra.Command{
 		publicKey := global.GetPubKey(privateKey)
 
 		// Se conecta a la red
-		// @TODO obtener la llave de la red
-		psk, err := global.DecodeV1PSK("7d44e2103328e75003666d3f23f858e376a9f0290130f1464303d8d515a676c8")
+		psk, err := global.DecodeV1PSK(key)
 		if err != nil {
 			log.Fatal("Error cargando PSK:", err)
 		}
@@ -255,8 +272,7 @@ var joinCmd = &cobra.Command{
 		}
 		defer h.Close()
 
-		// @TODO obtener la dirección del pivot
-		maddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/9000/p2p/12D3KooWEgeYgNpgnbVFP3hyCog1kLF7RbmD1XmiopWjkaCtnV2b")
+		maddr, err := multiaddr.NewMultiaddr(string(pivot))
 		if err != nil {
 			fmt.Println("❌ Error parseando la dirección del pivot:", err)
 			return
@@ -268,6 +284,8 @@ var joinCmd = &cobra.Command{
 			return
 		}
 
+		fmt.Println("🌐 pivot ", string(pivot))
+		fmt.Println("🌐 Conectando al pivot ", info)
 		ctx := context.Background()
 		if err := h.Connect(ctx, *info); err != nil {
 			fmt.Println("❌ Error conectándose al pivot:", err)
@@ -301,7 +319,105 @@ var joinCmd = &cobra.Command{
 		}
 		fmt.Println("Solicitud enviada con éxito al pivot")
 
-		// Espera el resultado
+		// Espera el resultado y si esta ok crea la red
+		resourcesPath := "./resources_" + network + ".json"
+		f, err := os.OpenFile(resourcesPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+
+		if err != nil {
+			if os.IsExist(err) {
+				log.Println("El archivo ya existe, no se hizo nada.")
+			}
+			log.Fatal("Error al intentar crear el archivo:", err)
+		} else {
+			_, err = f.Write([]byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"))
+			if err != nil {
+				log.Fatal("Error escribiendo contenido:", err)
+			}
+		}
+		f.Close()
+
+		remoteResourcesPath := "./remote_resources_" + network + ".json"
+		f, err = os.OpenFile(remoteResourcesPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+
+		if err != nil {
+			if os.IsExist(err) {
+				log.Println("El archivo ya existe, no se hizo nada.")
+			}
+			log.Fatal("Error al intentar crear el archivo:", err)
+		} else {
+			_, err = f.Write([]byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"))
+			if err != nil {
+				log.Fatal("Error escribiendo contenido:", err)
+			}
+		}
+		f.Close()
+
+		configuration.CM = configuration.NewConfigurationManager()
+		configuration.CM.LoadConfig()
+		cfg := configuration.CM.GetConfig()
+		port := "9100"
+		cfg.Networks = append(cfg.Networks, global.NetworkType{
+			Name:                network,
+			Port:                port,
+			Pivots:              []string{string(pivot)},
+			NetworkKey:          key,
+			MyAddress:           []string{"/ip4/0.0.0.0/tcp/" + port, "/ip4/0.0.0.0/udp/" + port + "/quic"},
+			Entities:            []global.KVType{},
+			Topics:              []global.TopicType{},
+			ResourcesPath:       resourcesPath,
+			RemoteResourcesPath: remoteResourcesPath,
+		})
+		configuration.CM.Save()
+
+	},
+}
+
+// 4. Subcomando: remote
+// 2. Comando Padre: entity
+var remoteCmd = &cobra.Command{
+	Use:   "remote",
+	Short: "Operaciones de recursos remotos",
+}
+
+var addCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Agrega un recurso remoto",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" || resourceType == "" || resource == "" || local == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network, --type, --resource, --local")
+			return
+		}
+
+		configuration.CM = configuration.NewConfigurationManager()
+		configuration.CM.LoadConfig()
+		cfg := configuration.CM.GetConfig()
+
+		for idx, net := range cfg.Networks {
+			if net.Name == network {
+				res := global.ResourceType{
+					Name:         resource,
+					ResourcePath: local,
+				}
+
+				switch resourceType {
+				case "API":
+					fmt.Println("Agregando recurso remoto API:", resource)
+					cfg.Networks[idx].RemoteResources.API = append(cfg.Networks[idx].RemoteResources.API, res)
+				case "FILE":
+					fmt.Println("Agregando recurso remoto FILE:", resource)
+					cfg.Networks[idx].RemoteResources.FILE = append(cfg.Networks[idx].RemoteResources.FILE, res)
+				case "DATA_SOURCE":
+					fmt.Println("Agregando recurso remoto DATA_SOURCE:", resource)
+					cfg.Networks[idx].RemoteResources.DATASOURCE = append(cfg.Networks[idx].RemoteResources.DATASOURCE, res)
+				default:
+					fmt.Println("❌ Error: Tipo de recurso no válido")
+					return
+				}
+
+				configuration.CM.SaveRemoteResources(network)
+				break
+			}
+		}
 	},
 }
 
@@ -313,6 +429,7 @@ func init() {
 	joinCmd.PersistentFlags().StringVarP(&entity, "entity", "e", "", "Nombre de la entidad (requerido)")
 	joinCmd.PersistentFlags().StringVarP(&file, "invitation", "i", "", "Archivo de invitación (requerido)")
 	joinCmd.PersistentFlags().StringVarP(&inviter, "inviter", "m", "", "Nombre del invitador (requerido)")
+	joinCmd.PersistentFlags().StringVarP(&key, "key", "k", "", "Llave de la red (requerido)")
 
 	createCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 	createCmd.PersistentFlags().StringVarP(&port, "port", "p", "", "Puerto de la red (requerido)")
@@ -322,6 +439,11 @@ func init() {
 
 	newPivotCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 
-	networkCmd.AddCommand(inviteCmd, createCmd, newNetworkKeyCmd, newPivotCmd, joinCmd)
+	addCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	addCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
+	addCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
+	addCmd.PersistentFlags().StringVarP(&local, "local", "l", "", "Ruta local del recurso (requerido)")
+	remoteCmd.AddCommand(addCmd)
+	networkCmd.AddCommand(inviteCmd, createCmd, newNetworkKeyCmd, newPivotCmd, joinCmd, remoteCmd)
 	rootCmd.AddCommand(networkCmd)
 }

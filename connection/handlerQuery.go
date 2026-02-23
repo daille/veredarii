@@ -23,28 +23,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-import (
-	global "Veredarii/global"
-	"bufio"
-	"bytes"
-	"context"
-	"database/sql"
-	"encoding/csv"
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
-	"strings"
 
-	"github.com/google/uuid"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	_ "github.com/marcboeker/go-duckdb"
-	log "github.com/sirupsen/logrus"
-	"github.com/xitongsys/parquet-go/source"
-	"google.golang.org/protobuf/proto"
-)
+//_ "github.com/marcboeker/go-duckdb"
 
+/*
 type QueryType struct {
 	Query     string `json:"query"`
 	Format    string `json:"format"`
@@ -418,3 +400,4 @@ func (m *MiMemFile) Open(name string) (source.ParquetFile, error)   { return m, 
 func (m *MiMemFile) Close() error                                   { return nil }
 func (m *MiMemFile) Seek(offset int64, whence int) (int64, error)   { return 0, nil }
 func (m *MiMemFile) Read(p []byte) (n int, err error)               { return m.Buffer.Read(p) }
+*/

@@ -25,10 +25,10 @@ SOFTWARE.
 */
 import (
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/casbin/casbin/v2"
-	"github.com/libp2p/go-libp2p/core/peer"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -51,35 +51,41 @@ func StartRBAC() {
 	}
 }
 
-func (rb *RBACType) Allowed(peerID peer.ID, dom string, obj string, act string) bool {
-	if entity := rb.PeerEntity[peerID.String()]; entity == "" {
-		log.Debug(fmt.Sprintf("No encontrado: %s %s %s %s", peerID.String(), dom, obj, act))
-		return false
-	} else {
-		if res, _ := rb.Enforcer.Enforce(entity, dom, obj, act); res {
-			log.Debug(fmt.Sprintf("Permitido: %s %s %s %s", peerID.String(), dom, obj, act))
-			return true
-		} else {
-			return false
-		}
+func (rb *RBACType) Allowed(entity string, dom string, obj string, act string) bool {
+	if res, _ := rb.Enforcer.Enforce(entity, dom, obj, act); res {
+		log.Debug(fmt.Sprintf("Permitido: %s %s %s %s", entity, dom, obj, act))
+		return true
 	}
+	log.Debug(fmt.Sprintf("Denegado: %s %s %s %s", entity, dom, obj, act))
+	return false
 }
 
-func (rb *RBACType) HasPermition2Protocol(peerID peer.ID, dom string, obj string) bool {
-	if entity := rb.PeerEntity[peerID.String()]; entity == "" {
-		log.Debug(fmt.Sprintf("No encontrado: %s %s %s %s", peerID.String(), dom, obj))
+func (rb *RBACType) GetTPS(entidad string, obj string, dom string, act string) int64 {
+	ok, rule, err := rb.Enforcer.EnforceEx(entidad, dom, obj, act)
+	if !ok {
+		log.Error("No se encontró la política: ", ok)
+		log.Error("entidad: ", entidad, " dom: ", dom, " obj: ", obj, " act: ", act)
+		return 0
+	} else if err != nil {
+		log.Error("Error al obtener la lista de políticas: ", err)
+		return 0
+	}
+
+	tps, _ := strconv.ParseInt(rule[4], 10, 64)
+	log.Debug(fmt.Sprintf("TPS: %d %s %s %s %s", tps, entidad, obj, dom, act))
+	return tps
+}
+
+func (rb *RBACType) HasPermition2Protocol(entity string, dom string, obj string) bool {
+	policies, err := rb.Enforcer.GetFilteredPolicy(0, entity, dom, obj)
+	if err != nil {
+		log.Error("Error al obtener la lista de políticas: ", err)
 		return false
+	}
+	if len(policies) > 0 {
+		return true
 	} else {
-		policies, err := rb.Enforcer.GetFilteredPolicy(0, entity, dom, obj)
-		if err != nil {
-			log.Error("Error al obtener la lista de políticas: ", err)
-			return false
-		}
-		if len(policies) > 0 {
-			return true
-		} else {
-			return false
-		}
+		return false
 	}
 }
 

@@ -28,6 +28,7 @@ import (
 	global "Veredarii/global"
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -99,6 +100,32 @@ func (n *Network) handleAuthStream(s network.Stream) {
 		return
 	} else {
 		RBAC.SetPeer(*rec)
+		n.Peers[remotePeer] = PeerType{
+			ID:     remotePeer,
+			Entity: rec.EntityName,
+		}
+		if err != nil {
+			fmt.Println("Error serializando sobre:", err)
+		} else {
+			pr := PeerRequest{
+				PeerID:     remotePeer.String(),
+				EntityName: rec.EntityName,
+			}
+			peerRequest, err := json.Marshal(pr)
+			if err != nil {
+				fmt.Println("Error serializando sobre:", err)
+				return
+			}
+			preKey := sha256.Sum256([]byte(n.SwarmKey))
+			key := preKey[:]
+			peerRequest, err = global.Encrypt(peerRequest, key)
+			if err != nil {
+				log.Error("❌ Error al cifrar la solicitud:", err)
+				return
+			}
+			ctx := context.Background()
+			n.NetworkPeerTopic.Publish(ctx, peerRequest)
+		}
 	}
 
 	n.MutexSesiones.Lock()

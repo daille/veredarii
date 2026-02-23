@@ -24,11 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/configuration"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 
+	"github.com/casbin/casbin/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/cobra"
 )
@@ -79,6 +82,37 @@ var createEntityCmd = &cobra.Command{
 		fmt.Printf("📂 Llave privada guardada en: %s\n", fileName)
 		fmt.Printf("🌐 Llave pública (libp2p): %s\n", pubHex)
 
+		configuration.CM = configuration.NewConfigurationManager()
+		cfg := configuration.CM.NewConfig()
+
+		cfg.Identity.Entity = name
+		cfg.Identity.PrivKeyFile = fileName
+		cfg.LocalInterface.Server.Port = "8100"
+		configuration.CM.Save()
+
+		// policy y model
+		err = os.WriteFile("policy.csv", []byte("#  Sujeto     | dominio                 | Objeto (Servicio)     | Acción | TPS\n#p,alice,red_interoperabilidad,api-proxy/1.0.0,hola"), 0600)
+		if err != nil {
+			fmt.Printf("❌ Error al guardar el archivo: %v\n", err)
+			return
+		}
+
+		err = os.WriteFile("model.conf", []byte(`[request_definition]
+r = sub, dom, obj, act
+
+[policy_definition]
+p = sub, dom, obj, act, tps
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = r.sub == p.sub && r.dom == p.dom && r.obj == p.obj && r.act == p.act`), 0600)
+		if err != nil {
+			fmt.Printf("❌ Error al guardar el archivo: %v\n", err)
+			return
+		}
+
 		fmt.Printf("🚀 Entidad '%s' creada con éxito.\n", name)
 	},
 }
@@ -89,6 +123,27 @@ var newKeyCmd = &cobra.Command{
 	Short: "Genera una nueva llave",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("🔑 Generando nueva llave para: %s\n", name)
+
+		entidad := "Nuevo"
+		dom := "red_interoperabilidad"
+		obj := "/api-proxy/1.0.0"
+		act := "hola"
+		rb, err := casbin.NewEnforcer("./model.conf", "./policy.csv")
+		if err != nil {
+			fmt.Println("Error al crear el enforcer: ", err)
+			return
+		}
+		ok, rule, err := rb.EnforceEx(entidad, dom, obj, act)
+		if !ok {
+			fmt.Println("No se encontró la política: ", ok)
+			fmt.Println(entidad, dom, obj, act)
+		} else if err != nil {
+			fmt.Println("Error al obtener la lista de políticas: ", err)
+		}
+
+		tps, _ := strconv.ParseInt(rule[4], 10, 64)
+		fmt.Printf("TPS: %d %s %s %s %s", tps, entidad, obj, dom, act)
+
 	},
 }
 

@@ -30,7 +30,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -98,7 +97,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 			})
 		}
 
-		for _, datasource := range network.RemoteResources.DATASOURCE {
+		/*for _, datasource := range network.RemoteResources.DATASOURCE {
 			r.Post("/"+network.Name+"/ds/"+datasource.Name, func(w http.ResponseWriter, r *http.Request) {
 				var query connection.QueryType
 				if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
@@ -122,7 +121,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 
 				connection.NM.Networks[network.Name].Query(targetID, query, datasource.Name)
 			})
-		}
+		}*/
 
 		if connection.NM.Networks[network.Name].Host != nil {
 			for _, addr := range connection.NM.Networks[network.Name].Host.Addrs() {

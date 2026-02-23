@@ -46,6 +46,12 @@ type JoinRequest struct {
 	Invitation  string `json:"invitation"`
 }
 
+type PeerRequest struct {
+	EntityName string `json:"entity"`
+	PeerID     string `json:"peerid"`
+	PublicKey  string `json:"pubkey"`
+}
+
 var globalUnionLimiter = rate.NewLimiter(rate.Limit(0.2), 3)
 
 func (n *Network) handleJoinStream(s network.Stream) {

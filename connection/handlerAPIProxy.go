@@ -47,8 +47,11 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	remotePeer := s.Conn().RemotePeer()
 	fmt.Println("remotePeer -> handleAPIProxyStream -> ", remotePeer)
 
-	if !RBAC.HasPermition2Protocol(remotePeer, n.Name, global.ProtocolAPIProxy) {
-		log.Debug("Denegado, sin permiso al protocolo: ", remotePeer.String(), n.Name, global.ProtocolAPIProxy)
+	pID := s.Conn().RemotePeer()
+	entidad := n.Peers[pID].Entity
+
+	if !RBAC.HasPermition2Protocol(entidad, n.Name, global.ProtocolAPIProxy) {
+		log.Debug("Denegado, sin permiso al protocolo: ", entidad, n.Name, global.ProtocolAPIProxy)
 		s.Reset()
 		return
 	}
@@ -67,8 +70,17 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 			log.Printf("Error unmarshal protobuf: %v", err)
 			return
 		}
+		tps := RBAC.GetTPS(entidad, global.ProtocolAPIProxy, n.Name, msg.Service)
+		log.Debug("TPS: ", tps)
+		limiter := n.RateLimiter.GetLimiter(entidad, global.ProtocolAPIProxy, tps)
 
-		if !RBAC.Allowed(remotePeer, n.Name, global.ProtocolAPIProxy, msg.Service) {
+		if !limiter.Allow() {
+			fmt.Printf("⚠️ Entidad '%s' excedió su límite global de %v TPS\n", entidad, tps)
+			s.Reset()
+			return
+		}
+
+		if !RBAC.Allowed(entidad, n.Name, global.ProtocolAPIProxy, msg.Service) {
 			log.Debug("Denegado, sin permiso al servicio: ", remotePeer.String(), n.Name, global.ProtocolAPIProxy, msg.Service)
 			s.Reset()
 			return

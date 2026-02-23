@@ -28,6 +28,7 @@ import (
 	global "Veredarii/global"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,6 +36,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -69,6 +71,8 @@ type Network struct {
 	Peers              map[peer.ID]PeerType
 	DHT                *dht.IpfsDHT
 	NetworkMemberTopic *pubsub.Topic
+	NetworkPeerTopic   *pubsub.Topic
+	RateLimiter        *RateManager
 }
 
 type PeerType struct {
@@ -93,6 +97,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		MutexSesiones:   sync.RWMutex{},
 		MasterEntities:  map[string]crypto.PubKey{},
 		Peers:           map[peer.ID]PeerType{},
+		RateLimiter:     &RateManager{entidadLimits: make(map[string]map[string]*rate.Limiter)},
 	}
 
 	return &N
@@ -115,7 +120,8 @@ func (n *Network) Connect() {
 		connmgr.WithGracePeriod(time.Minute),
 	)
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return
 	}
 
 	n.Host, err = libp2p.New(
@@ -155,7 +161,7 @@ func (n *Network) Connect() {
 	n.Host.SetStreamHandler(global.ProtocolAPIProxy, n.handleAPIProxyStream)
 	n.Host.SetStreamHandler(global.ProtocolFileSystem, n.handleFileFetch)
 	n.Host.SetStreamHandler(global.ProtocolFileSystemStat, n.handleFileStat)
-	n.Host.SetStreamHandler(global.ProtocolQuery, n.HandleSearch)
+	//n.Host.SetStreamHandler(global.ProtocolQuery, n.HandleSearch)
 	go n.FileSystem()
 	go n.InitBroadcast()
 
@@ -167,7 +173,7 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 	for {
 		peerCount := len(n.Host.Network().Peers())
 
-		if peerCount == 0 && n.Pivots != nil {
+		if peerCount == 0 && len(n.Pivots) > 0 {
 			log.Warn("¡Nodo aislado! Reconectando a los pivotes...")
 			for _, addr := range n.Pivots {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -181,7 +187,6 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 				cancel()
 			}
 		}
-
 		time.Sleep(30 * time.Second)
 	}
 }
@@ -200,6 +205,57 @@ func (n *Network) InitBroadcast() {
 	if err != nil {
 		log.Error("Error al suscribirse al topic:", err)
 	}
+
+	n.NetworkPeerTopic, err = ps.Join("peers")
+	if err != nil {
+		log.Error("Error al unirse al topic:", err)
+	}
+	subPeer, err := n.NetworkPeerTopic.Subscribe()
+	if err != nil {
+		log.Error("Error al suscribirse al topic:", err)
+	}
+
+	go func() {
+		preKey := sha256.Sum256([]byte(n.SwarmKey))
+		key := preKey[:]
+		for {
+			msg, err := subPeer.Next(ctx)
+			if err != nil {
+				log.Error("Error al recibir el mensaje:", err)
+				continue
+			}
+			descifrado, err := global.Decrypt(msg.Data, key)
+			if err != nil {
+				log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
+				continue
+			}
+			fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
+
+			var peerRequest PeerRequest
+			err = json.Unmarshal(descifrado, &peerRequest)
+			if err != nil {
+				log.Error("❌ Error deserializando solicitud:", err)
+				return
+			}
+			log.Info("Solicitud deserializada:", peerRequest.EntityName, peerRequest.PeerID)
+			PID, err := peer.Decode(peerRequest.PeerID)
+			if err != nil {
+				log.Error("❌ Error decodificando llave publica:", err)
+				return
+			}
+			/*pubKey, err := global.ParsePubKeyRecibida(peerRequest.PublicKey)
+			if err != nil {
+				log.Error("❌ Error decodificando llave publica:", err)
+				return
+			}*/
+			n.MutexSesiones.Lock()
+			n.Peers[PID] = PeerType{
+				Entity: peerRequest.EntityName,
+				//PubKey: pubKey,
+			}
+			n.MutexSesiones.Unlock()
+		}
+	}()
 
 	go func() {
 		preKey := sha256.Sum256([]byte(n.SwarmKey))
@@ -232,6 +288,15 @@ func (n *Network) InitBroadcast() {
 			n.MutexSesiones.Lock()
 			n.MasterEntities[joinRequest.EntityName] = pubKey
 			n.MutexSesiones.Unlock()
+
+			data, err := base64.StdEncoding.DecodeString(joinRequest.PublicKey)
+			if err != nil {
+				log.Fatal("Error decodificando Base64:", err)
+			}
+			configuration.CM.AddEntity(n.Name, global.KVType{
+				Name: joinRequest.EntityName,
+				Key:  hex.EncodeToString(data),
+			})
 		}
 	}()
 

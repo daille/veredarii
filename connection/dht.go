@@ -38,12 +38,12 @@ import (
 
 func (n *Network) initDHT() {
 	ctx := context.Background()
-	mode := dht.Mode(dht.ModeAuto)
-	if len(n.Pivots) == 0 {
-		mode = dht.Mode(dht.ModeServer)
-	} else {
+	//mode := dht.Mode(dht.ModeAuto)
+	//if len(n.Pivots) == 0 {
+	mode := dht.Mode(dht.ModeServer)
+	/*} else {
 		mode = dht.Mode(dht.ModeClient)
-	}
+	}*/
 
 	var err error
 	n.DHT, err = dht.New(ctx, n.Host, mode, dht.ProtocolPrefix("/mi-app-servicios"))
@@ -75,6 +75,7 @@ func (n *Network) anunciarServicio(ctx context.Context, serviceName string) {
 }
 
 func (n *Network) BuscarServicio(ctx context.Context, serviceName string) peer.ID {
+	fmt.Println(len(n.DHT.RoutingTable().ListPeers()))
 	routingDiscovery := routing.NewRoutingDiscovery(n.DHT)
 	peerChan, err := routingDiscovery.FindPeers(ctx, serviceName, discovery.Limit(10))
 	if err != nil {

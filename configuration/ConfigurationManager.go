@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	global "Veredarii/global"
 	"encoding/json"
+	"errors"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -43,6 +44,11 @@ func NewConfigurationManager() *ConfigurationManager {
 	return &ConfigurationManager{
 		Config: &global.ConfigType{},
 	}
+}
+
+func (cm *ConfigurationManager) NewConfig() *global.ConfigType {
+	cm.Config = &global.ConfigType{}
+	return cm.Config
 }
 
 func (cm *ConfigurationManager) LoadConfig() error {
@@ -91,4 +97,44 @@ func (cm *ConfigurationManager) loadJson(file string, obj interface{}) error {
 	}
 
 	return nil
+}
+func (cm *ConfigurationManager) AddEntity(network string, entity global.KVType) {
+	for idx, nn := range cm.Config.Networks {
+		if nn.Name == network {
+			cm.Config.Networks[idx].Entities = append(cm.Config.Networks[idx].Entities, entity)
+			cm.Save()
+			break
+		}
+	}
+}
+
+func (cm *ConfigurationManager) Save() error {
+	buf, err := json.MarshalIndent(cm.Config, "", "    ")
+	if err != nil {
+		log.Error("Error serializando archivo:", err)
+		return err
+	}
+
+	return os.WriteFile(ConfigFilename, buf, 0644)
+}
+
+func (cm *ConfigurationManager) SaveRemoteResources(network string) error {
+	if network == "" {
+		log.Error("Error guardando recursos remotos: red no especificada")
+		return errors.New("red no especificada")
+	}
+
+	for idx, nn := range cm.Config.Networks {
+		if nn.Name == network {
+			remoteResourcesPath := "./remote_resources_" + network + ".json"
+			buf, err := json.MarshalIndent(cm.Config.Networks[idx].RemoteResources, "", "    ")
+			if err != nil {
+				log.Error("Error serializando archivo:", err)
+				return err
+			}
+			return os.WriteFile(remoteResourcesPath, buf, 0644)
+		}
+	}
+
+	return errors.New("red no encontrada")
 }

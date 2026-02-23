@@ -1,9 +1,15 @@
-package cmd
+package connection
+
+import (
+	"sync"
+
+	"golang.org/x/time/rate"
+)
 
 /*
 MIT License
 
-Copyright (c) 2026 Juan Carlos Daille
+# Copyright (c) 2026 Juan Carlos Daille
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,56 +29,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-import (
-	"crypto/rand"
-	"fmt"
-	"os"
-
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/spf13/cobra"
-)
-
-var rootCmd = &cobra.Command{
-	Use:   "Veredarii",
-	Short: "Veredarii de interoperabilidad PISEE 2",
-	Long:  `Veredarii de Interoperabilidad de PISEE 2`,
+type RateManager struct {
+	entidadLimits map[string]map[string]*rate.Limiter
+	mu            sync.Mutex
 }
 
-var network string
-var entity string
-var file string
-var port string
-var inviter string
-var key string
+func (rm *RateManager) GetLimiter(entidad string, servicio string, tps int64) *rate.Limiter {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
-var resourceType string
-var resource string
-var local string
-
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
-// ================================================================
-
-func GenerateEntityKeys() ([]byte, []byte, error) {
-	priv, pub, err := crypto.GenerateEd25519Key(rand.Reader)
-	if err != nil {
-		return nil, nil, err
+	if rm.entidadLimits[entidad] == nil {
+		rm.entidadLimits[entidad] = make(map[string]*rate.Limiter)
 	}
 
-	privBytes, err := priv.Raw()
-	if err != nil {
-		return nil, nil, err
+	l, exists := rm.entidadLimits[entidad][servicio]
+	if !exists {
+		l = rate.NewLimiter(rate.Limit(tps), int(tps)+1)
+		rm.entidadLimits[entidad][servicio] = l
 	}
-
-	pubBytes, err := crypto.MarshalPublicKey(pub)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return privBytes, pubBytes, nil
+	return l
 }
