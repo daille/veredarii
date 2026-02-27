@@ -63,6 +63,7 @@ type NetworkType struct {
 	Pivots              []string      `json:"pivots"`
 	NetworkKey          string        `json:"network_key"`
 	MyAddress           []string      `json:"myAddress"`
+	ExternalAddress     string        `json:"external_address"`
 	Entities            []KVType      `json:"entities"`
 	Topics              []TopicType   `json:"topics"`
 	RemoteResourcesPath string        `json:"remote_resources"`

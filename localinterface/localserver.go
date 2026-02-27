@@ -78,7 +78,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 
 	for _, network := range configuration.CM.GetConfig().Networks {
 		for _, service := range network.RemoteResources.API {
-			r.Get("/"+network.Name+"/"+service.Name, func(w http.ResponseWriter, r *http.Request) {
+			r.Get("/"+network.Name+"/"+service.ResourcePath, func(w http.ResponseWriter, r *http.Request) {
 
 				requestDump, err := httputil.DumpRequest(r, true)
 				if err != nil {
@@ -87,12 +87,12 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 				}
 
 				targetID := connection.NM.Networks[network.Name].BuscarServicio(context.Background(), service.Name)
-				if targetID == "" {
+				if targetID == nil {
 					log.Error("Servicio no encontrado")
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
-				respuesta := connection.NM.Networks[network.Name].Conversar(targetID, service.Name, requestDump)
+				respuesta := connection.NM.Networks[network.Name].Conversar(*targetID, service.Name, requestDump)
 				w.Write(respuesta)
 			})
 		}

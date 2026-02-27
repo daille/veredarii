@@ -204,13 +204,13 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 		if name == resource.Name {
 
 			targetID := d.N.BuscarServicio(context.Background(), resource.Name)
-			if targetID == "" {
+			if targetID == nil {
 				log.Error("Servicio no encontrado")
 				return nil, fuse.ENOENT
 			}
 
 			log.Debug("Buscando Stat del archivo: ", name)
-			remoteSize, err := d.N.GetRemoteStat(targetID, name)
+			remoteSize, err := d.N.GetRemoteStat(targetID.ID, name)
 			if err != nil {
 				log.Error("Error al obtener el stat del archivo: ", err)
 				return nil, fuse.ENOENT
@@ -245,11 +245,11 @@ func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
 	fmt.Printf("🚀 Iniciando descarga P2P para: %s...\n", f.FileName)
 
 	targetID := f.N.BuscarServicio(context.Background(), f.FileName)
-	if targetID == "" {
+	if targetID == nil {
 		log.Error("Servicio no encontrado")
 		return nil, fuse.ENOENT
 	}
-	content, err := f.N.RequestFile(targetID, f.FileName, f.FileName)
+	content, err := f.N.RequestFile(targetID.ID, f.FileName, f.FileName)
 	if err != nil {
 		return nil, fuse.ENOENT
 	}

@@ -32,6 +32,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,14 +43,18 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/record"
+	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Network struct {
@@ -60,6 +65,7 @@ type Network struct {
 	JoinKey         string
 	Pivots          []string
 	Address         []string
+	ExternalAddress string
 	Resources       global.ResourcesType
 	RemoteResources global.ResourcesType
 	Topics          []global.TopicType
@@ -70,6 +76,7 @@ type Network struct {
 	MasterEntities     map[string]crypto.PubKey
 	Peers              map[peer.ID]PeerType
 	DHT                *dht.IpfsDHT
+	RoutingDiscovery   *routing.RoutingDiscovery
 	NetworkMemberTopic *pubsub.Topic
 	NetworkPeerTopic   *pubsub.Topic
 	RateLimiter        *RateManager
@@ -81,7 +88,7 @@ type PeerType struct {
 	Entity string
 }
 
-func NewNetwork(name string, port string, swarmKey string, pivots []string, address []string, topics []global.TopicType, entities []global.KVType, resources global.ResourcesType, remoteResources global.ResourcesType) *Network {
+func NewNetwork(name string, port string, swarmKey string, pivots []string, address []string, externalAddress string, topics []global.TopicType, entities []global.KVType, resources global.ResourcesType, remoteResources global.ResourcesType) *Network {
 	N := Network{
 		Name:            name,
 		Port:            port,
@@ -89,6 +96,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		JoinKey:         ":",
 		Pivots:          pivots,
 		Address:         address,
+		ExternalAddress: externalAddress,
 		Topics:          topics,
 		Entities:        entities,
 		Resources:       resources,
@@ -124,26 +132,49 @@ func (n *Network) Connect() {
 		return
 	}
 
-	n.Host, err = libp2p.New(
-		libp2p.ListenAddrStrings(n.Address...),
-		libp2p.Identity(priv),
-		libp2p.ConnectionManager(cmgr),
-		libp2p.ConnectionGater(miGater),
-		libp2p.ResourceManager(rmgr),
-		libp2p.Security(noise.ID, noise.New),
-		libp2p.Security(tls.ID, tls.New),
-		libp2p.DefaultMuxers,
-		libp2p.NATPortMap(),
-		libp2p.EnableHolePunching(),
-		libp2p.EnableRelayService(),
-		libp2p.EnableNATService(),
-		libp2p.PrivateNetwork(psk),
-		libp2p.EnableRelay(),
-	)
+	if n.Pivots != nil {
+		n.Host, err = libp2p.New(
+			libp2p.ListenAddrStrings(n.Address...),
+			libp2p.Identity(priv),
+			libp2p.ConnectionManager(cmgr),
+			libp2p.ConnectionGater(miGater),
+			libp2p.ResourceManager(rmgr),
+			libp2p.Security(noise.ID, noise.New),
+			libp2p.Security(tls.ID, tls.New),
+			libp2p.DefaultMuxers,
+			libp2p.EnableRelayService(),
+			libp2p.EnableNATService(),
+			libp2p.PrivateNetwork(psk),
+			libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+				if n.ExternalAddress == "" {
+					return addrs
+				}
+				externalAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%s", n.ExternalAddress, n.Port))
+				return append(addrs, externalAddr)
+			}),
+		)
+	} else {
+		n.Host, err = libp2p.New(
+			libp2p.ListenAddrStrings(n.Address...),
+			libp2p.Identity(priv),
+			libp2p.ConnectionManager(cmgr),
+			libp2p.ConnectionGater(miGater),
+			libp2p.ResourceManager(rmgr),
+			libp2p.Security(noise.ID, noise.New),
+			libp2p.Security(tls.ID, tls.New),
+			libp2p.DefaultMuxers,
+			libp2p.NATPortMap(),
+			libp2p.EnableHolePunching(),
+			libp2p.EnableNATService(),
+			libp2p.PrivateNetwork(psk),
+			libp2p.EnableRelay(),
+		)
+	}
 	if err != nil {
 		log.Error(err)
 		return
 	}
+
 	n.Host.Network().Notify(&networkNotifiee{n: n})
 	defer n.Host.Close()
 	fmt.Println("ID del peer:", n.Host.ID())
@@ -152,7 +183,7 @@ func (n *Network) Connect() {
 		fmt.Printf("👉 %s/p2p/%s\n", addr, peerID)
 	}
 	go n.MonitorConnections(priv)
-	n.initDHT()
+	go n.initDHT()
 
 	// Protocolos de funcionamiento de la red
 	n.Host.SetStreamHandler(global.ProtocolAuth, n.handleAuthStream)
@@ -164,6 +195,35 @@ func (n *Network) Connect() {
 	//n.Host.SetStreamHandler(global.ProtocolQuery, n.HandleSearch)
 	go n.FileSystem()
 	go n.InitBroadcast()
+
+	fmt.Println("reachability")
+	status := n.GetReachability()
+
+	switch status {
+	case network.ReachabilityPublic:
+		fmt.Println("🚀 Conectividad Óptima: Los peers pueden entrar directo.")
+		// Aquí podrías, por ejemplo, aumentar el límite de conexiones del Connection Manager
+
+	case network.ReachabilityPrivate:
+		fmt.Println("🛡️ Conectividad Protegida: Dependemos del Pivote (Relay).")
+		// Aquí podrías avisar al usuario que la latencia será un poco mayor
+
+	default:
+		fmt.Println("⏳ Determinando estado de red...")
+	}
+
+	sub, _ := n.Host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
+	go func() {
+		for e := range sub.Out() {
+			evt := e.(event.EvtLocalReachabilityChanged)
+			if evt.Reachability == network.ReachabilityPublic {
+				fmt.Println("🚀 ¡Evento: Ahora soy alcanzable desde el exterior!")
+			}
+		}
+	}()
+	for _, addr := range n.Host.Addrs() {
+		fmt.Printf("Dirección activa: %s\n", addr)
+	}
 
 	fmt.Println("\nServidor esperando conexiones...")
 	select {}
@@ -331,4 +391,35 @@ func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
 	}
 
 	return psk, priv
+}
+
+func (n *Network) GetReachability() network.Reachability {
+	// Analizamos las direcciones actuales del host
+	hasPublicIP := false
+	for _, addr := range n.Host.Addrs() {
+		addrStr := addr.String()
+		// Si tiene una IP que no es privada ni loopback ni relay
+		if !strings.Contains(addrStr, "127.0.0.1") &&
+			!strings.Contains(addrStr, "192.168.") &&
+			!strings.Contains(addrStr, "10.") &&
+			!strings.Contains(addrStr, "p2p-circuit") {
+			hasPublicIP = true
+			break
+		}
+	}
+
+	if hasPublicIP {
+		return network.ReachabilityPublic
+	}
+	return network.ReachabilityPrivate
+}
+
+// Helper simple para filtrar IPs
+func isExternalAddr(addr string) bool {
+	// Si contiene p2p-circuit (Relay) o IPs privadas, no es "puro" público
+	isLocal := strings.Contains(addr, "127.0.0.1") ||
+		strings.Contains(addr, "192.168.") ||
+		strings.Contains(addr, "10.") ||
+		strings.Contains(addr, "p2p-circuit")
+	return !isLocal
 }

@@ -68,6 +68,7 @@ func (nm *NetworkManager) AddNetwork(network global.NetworkType) {
 		network.NetworkKey,
 		network.Pivots,
 		network.MyAddress,
+		network.ExternalAddress,
 		network.Topics,
 		network.Entities,
 		network.Resources,

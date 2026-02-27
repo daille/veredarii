@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 
@@ -131,8 +132,8 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	}
 }
 
-func (n *Network) Conversar(targetID peer.ID, service string, payload []byte) []byte {
-	s, err := n.Host.NewStream(context.Background(), targetID, global.ProtocolAPIProxy)
+func (n *Network) Conversar(targetID peer.AddrInfo, service string, payload []byte) []byte {
+	s, err := n.Host.NewStream(context.Background(), targetID.ID, global.ProtocolAPIProxy)
 	if err != nil {
 		log.Printf("Error abriendo stream: %v", err)
 		return nil
@@ -154,6 +155,7 @@ func (n *Network) Conversar(targetID peer.ID, service string, payload []byte) []
 		fmt.Printf("🔄 Respuesta del nodo: %s\n", res.Payload)
 		return res.Payload
 	}
+
 	return nil
 }
 
@@ -177,4 +179,33 @@ func readDelimited(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+func (n *Network) IsPublic() bool {
+	addrs := n.Host.Addrs()
+	for _, addr := range addrs {
+		addrStr := addr.String()
+
+		// 1. Ignoramos lo local
+		if strings.Contains(addrStr, "127.0.0.1") || strings.Contains(addrStr, "::1") {
+			continue
+		}
+
+		// 2. Ignoramos IPs privadas típicas de router/NAT
+		if strings.Contains(addrStr, "/ip4/192.168.") ||
+			strings.Contains(addrStr, "/ip4/10.") ||
+			strings.Contains(addrStr, "/ip4/172.16.") { // (puedes añadir más si quieres)
+			continue
+		}
+
+		// 3. Ignoramos si es una dirección de Relay (p2p-circuit)
+		// Porque si usas relay, no eres "realmente" público, el pivote te está ayudando
+		if strings.Contains(addrStr, "p2p-circuit") {
+			continue
+		}
+
+		// Si llegamos aquí y hay una dirección IP4 o IP6, ¡es externa!
+		return true
+	}
+	return false
 }

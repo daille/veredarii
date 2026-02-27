@@ -26,6 +26,8 @@ SOFTWARE.
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -36,17 +38,14 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/util"
 )
 
+const protocolPrefix = "/KoNfE4RRSjvPfYrq9"
+
 func (n *Network) initDHT() {
 	ctx := context.Background()
-	//mode := dht.Mode(dht.ModeAuto)
-	//if len(n.Pivots) == 0 {
 	mode := dht.Mode(dht.ModeServer)
-	/*} else {
-		mode = dht.Mode(dht.ModeClient)
-	}*/
 
 	var err error
-	n.DHT, err = dht.New(ctx, n.Host, mode, dht.ProtocolPrefix("/mi-app-servicios"))
+	n.DHT, err = dht.New(ctx, n.Host, mode, dht.ProtocolPrefix(protocolPrefix))
 	if err != nil {
 		log.Error(err)
 		return
@@ -57,6 +56,53 @@ func (n *Network) initDHT() {
 		return
 	}
 
+	ticker := time.NewTicker(4 * time.Hour)
+	defer ticker.Stop()
+	done := make(chan bool)
+	n.publishServices()
+
+	go n.activeConnection2RelatedPeers()
+
+	for {
+		select {
+		case _ = <-ticker.C:
+			n.publishServices()
+		case <-done:
+			log.Info("Stopping ticker...")
+			return
+		}
+	}
+}
+
+func (n *Network) activeConnection2RelatedPeers() {
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	numWorkers := len(n.RemoteResources.API)
+	wg.Add(numWorkers)
+
+	for _, remoteResource := range n.RemoteResources.API {
+		go func() {
+			for {
+				peer := n.BuscarServicio(ctx, remoteResource.Name)
+				if peer != nil {
+					log.Debug("Conectando al host ", peer.ID, " proveedor de ", remoteResource.Name)
+					n.Host.Connect(ctx, *peer)
+					wg.Done()
+					break
+				}
+				time.Sleep(1 * time.Minute)
+			}
+		}()
+
+	}
+
+	wg.Wait()
+}
+
+func (n *Network) publishServices() {
+	log.Info("Anunciando servicios en la DHT...")
+	ctx := context.Background()
+	n.RoutingDiscovery = routing.NewRoutingDiscovery(n.DHT)
 	for _, topic := range n.Resources.API {
 		go n.anunciarServicio(ctx, topic.Name)
 	}
@@ -69,18 +115,16 @@ func (n *Network) initDHT() {
 }
 
 func (n *Network) anunciarServicio(ctx context.Context, serviceName string) {
-	routingDiscovery := routing.NewRoutingDiscovery(n.DHT)
-	util.Advertise(ctx, routingDiscovery, serviceName)
+	util.Advertise(ctx, n.RoutingDiscovery, serviceName)
 	fmt.Printf("Anunciando servicio '%s' en la DHT...\n", serviceName)
 }
 
-func (n *Network) BuscarServicio(ctx context.Context, serviceName string) peer.ID {
+func (n *Network) BuscarServicio(ctx context.Context, serviceName string) *peer.AddrInfo {
 	fmt.Println(len(n.DHT.RoutingTable().ListPeers()))
-	routingDiscovery := routing.NewRoutingDiscovery(n.DHT)
-	peerChan, err := routingDiscovery.FindPeers(ctx, serviceName, discovery.Limit(10))
+	peerChan, err := n.RoutingDiscovery.FindPeers(ctx, serviceName, discovery.Limit(10))
 	if err != nil {
 		fmt.Printf("Error al buscar servicio: %v\n", err)
-		return ""
+		return nil
 	}
 
 	fmt.Printf("Buscando proveedores de '%s'...\n", serviceName)
@@ -91,8 +135,8 @@ func (n *Network) BuscarServicio(ctx context.Context, serviceName string) peer.I
 		}
 
 		fmt.Printf("✨ Encontrado servicio en Peer: %s\n", peerInfo.ID)
-		return peerInfo.ID
+		return &peerInfo
 	}
 
-	return ""
+	return nil
 }
