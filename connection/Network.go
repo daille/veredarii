@@ -24,31 +24,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"Veredarii/configuration"
 	global "Veredarii/global"
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"strings"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
+	dspebble "github.com/ipfs/go-ds-pebble"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
+	crdt "github.com/ipfs/go-ds-crdt"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/pnet"
-	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
@@ -80,6 +76,9 @@ type Network struct {
 	NetworkMemberTopic *pubsub.Topic
 	NetworkPeerTopic   *pubsub.Topic
 	RateLimiter        *RateManager
+	DataStore          *crdt.Datastore
+	PebbleStore        *dspebble.Datastore
+	chPutHook          chan (global.KVType)
 }
 
 type PeerType struct {
@@ -106,6 +105,8 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		MasterEntities:  map[string]crypto.PubKey{},
 		Peers:           map[peer.ID]PeerType{},
 		RateLimiter:     &RateManager{entidadLimits: make(map[string]map[string]*rate.Limiter)},
+		DataStore:       &crdt.Datastore{},
+		PebbleStore:     &dspebble.Datastore{},
 	}
 
 	return &N
@@ -174,16 +175,7 @@ func (n *Network) Connect() {
 		log.Error(err)
 		return
 	}
-
-	n.Host.Network().Notify(&networkNotifiee{n: n})
 	defer n.Host.Close()
-	fmt.Println("ID del peer:", n.Host.ID())
-	peerID := n.Host.ID().String()
-	for _, addr := range n.Host.Addrs() {
-		fmt.Printf("👉 %s/p2p/%s\n", addr, peerID)
-	}
-	go n.MonitorConnections(priv)
-	go n.initDHT()
 
 	// Protocolos de funcionamiento de la red
 	n.Host.SetStreamHandler(global.ProtocolAuth, n.handleAuthStream)
@@ -192,40 +184,57 @@ func (n *Network) Connect() {
 	n.Host.SetStreamHandler(global.ProtocolAPIProxy, n.handleAPIProxyStream)
 	n.Host.SetStreamHandler(global.ProtocolFileSystem, n.handleFileFetch)
 	n.Host.SetStreamHandler(global.ProtocolFileSystemStat, n.handleFileStat)
-	//n.Host.SetStreamHandler(global.ProtocolQuery, n.HandleSearch)
-	go n.FileSystem()
-	go n.InitBroadcast()
 
-	fmt.Println("reachability")
-	status := n.GetReachability()
-
-	switch status {
-	case network.ReachabilityPublic:
-		fmt.Println("🚀 Conectividad Óptima: Los peers pueden entrar directo.")
-		// Aquí podrías, por ejemplo, aumentar el límite de conexiones del Connection Manager
-
-	case network.ReachabilityPrivate:
-		fmt.Println("🛡️ Conectividad Protegida: Dependemos del Pivote (Relay).")
-		// Aquí podrías avisar al usuario que la latencia será un poco mayor
-
-	default:
-		fmt.Println("⏳ Determinando estado de red...")
+	fmt.Println("ID del peer:", n.Host.ID())
+	peerID := n.Host.ID().String()
+	for _, addr := range n.Host.Addrs() {
+		fmt.Printf("👉 %s/p2p/%s\n", addr, peerID)
 	}
+	go n.InitBroadcast()
+	go n.MonitorConnections(priv)
+	go n.initDHT()
+	go n.FileSystem()
 
-	sub, _ := n.Host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	go func() {
-		for e := range sub.Out() {
-			evt := e.(event.EvtLocalReachabilityChanged)
-			if evt.Reachability == network.ReachabilityPublic {
-				fmt.Println("🚀 ¡Evento: Ahora soy alcanzable desde el exterior!")
-			}
+		n.DataStore, n.PebbleStore = n.NewDataStore()
+		peers := n.Query("peers")
+		for _, peerFounded := range peers {
+			log.Debug(fmt.Sprintf("Peer '%s' de la entidad '%s'", peerFounded.Key, peerFounded.Name))
+			n.Peers[peer.ID(peerFounded.Key)] = PeerType{ID: peer.ID(peerFounded.Key), Entity: peerFounded.Name}
 		}
+		n.Host.Network().Notify(&network.NotifyBundle{
+			ConnectedF: func(net network.Network, conn network.Conn) {
+				log.Infof("Peer conectado: %s", conn.RemotePeer())
+				go func() {
+					time.Sleep(2 * time.Second)
+					ctx := context.Background()
+					n.DataStore.MarkDirty(ctx)
+					if err := n.DataStore.Repair(ctx); err != nil {
+						log.Errorf("Error en repair: %v", err)
+					}
+				}()
+			},
+		})
 	}()
+
+	// Cargando Peers
 	for _, addr := range n.Host.Addrs() {
 		fmt.Printf("Dirección activa: %s\n", addr)
 	}
-
 	fmt.Println("\nServidor esperando conexiones...")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		n.DataStore.Close()
+		time.Sleep(500 * time.Millisecond)
+		n.PebbleStore.Close()
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}()
+
 	select {}
 }
 
@@ -249,177 +258,4 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 		}
 		time.Sleep(30 * time.Second)
 	}
-}
-
-func (n *Network) InitBroadcast() {
-	ctx := context.Background()
-	ps, err := pubsub.NewGossipSub(ctx, n.Host)
-	if err != nil {
-		log.Error("Error al crear el pubsub:", err)
-	}
-	n.NetworkMemberTopic, err = ps.Join("members")
-	if err != nil {
-		log.Error("Error al unirse al topic:", err)
-	}
-	sub, err := n.NetworkMemberTopic.Subscribe()
-	if err != nil {
-		log.Error("Error al suscribirse al topic:", err)
-	}
-
-	n.NetworkPeerTopic, err = ps.Join("peers")
-	if err != nil {
-		log.Error("Error al unirse al topic:", err)
-	}
-	subPeer, err := n.NetworkPeerTopic.Subscribe()
-	if err != nil {
-		log.Error("Error al suscribirse al topic:", err)
-	}
-
-	go func() {
-		preKey := sha256.Sum256([]byte(n.SwarmKey))
-		key := preKey[:]
-		for {
-			msg, err := subPeer.Next(ctx)
-			if err != nil {
-				log.Error("Error al recibir el mensaje:", err)
-				continue
-			}
-			descifrado, err := global.Decrypt(msg.Data, key)
-			if err != nil {
-				log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
-				continue
-			}
-			fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
-
-			var peerRequest PeerRequest
-			err = json.Unmarshal(descifrado, &peerRequest)
-			if err != nil {
-				log.Error("❌ Error deserializando solicitud:", err)
-				return
-			}
-			log.Info("Solicitud deserializada:", peerRequest.EntityName, peerRequest.PeerID)
-			PID, err := peer.Decode(peerRequest.PeerID)
-			if err != nil {
-				log.Error("❌ Error decodificando llave publica:", err)
-				return
-			}
-			/*pubKey, err := global.ParsePubKeyRecibida(peerRequest.PublicKey)
-			if err != nil {
-				log.Error("❌ Error decodificando llave publica:", err)
-				return
-			}*/
-			n.MutexSesiones.Lock()
-			n.Peers[PID] = PeerType{
-				Entity: peerRequest.EntityName,
-				//PubKey: pubKey,
-			}
-			n.MutexSesiones.Unlock()
-		}
-	}()
-
-	go func() {
-		preKey := sha256.Sum256([]byte(n.SwarmKey))
-		key := preKey[:]
-		for {
-			msg, err := sub.Next(ctx)
-			if err != nil {
-				log.Error("Error al recibir el mensaje:", err)
-				continue
-			}
-			descifrado, err := global.Decrypt(msg.Data, key)
-			if err != nil {
-				log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
-				continue
-			}
-			fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
-
-			var joinRequest JoinRequest
-			err = json.Unmarshal(descifrado, &joinRequest)
-			if err != nil {
-				log.Error("❌ Error deserializando solicitud:", err)
-				return
-			}
-			log.Info("Solicitud deserializada:", joinRequest.EntityName)
-			pubKey, err := global.ParsePubKeyRecibida(joinRequest.PublicKey)
-			if err != nil {
-				log.Error("❌ Error decodificando llave publica:", err)
-				return
-			}
-			n.MutexSesiones.Lock()
-			n.MasterEntities[joinRequest.EntityName] = pubKey
-			n.MutexSesiones.Unlock()
-
-			data, err := base64.StdEncoding.DecodeString(joinRequest.PublicKey)
-			if err != nil {
-				log.Fatal("Error decodificando Base64:", err)
-			}
-			configuration.CM.AddEntity(n.Name, global.KVType{
-				Name: joinRequest.EntityName,
-				Key:  hex.EncodeToString(data),
-			})
-		}
-	}()
-
-}
-
-func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
-	var err error
-
-	record.RegisterType(&EntidadRecord{})
-	for _, entity := range n.Entities {
-		log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", entity.Name, entity.Key))
-		pubKeyRaw, err := hex.DecodeString(entity.Key)
-		if err != nil {
-			log.Fatalf("Error al decodificar hexadecimal: %v", err)
-		}
-		pkb, err := crypto.UnmarshalPublicKey(pubKeyRaw)
-		if err != nil {
-			log.Fatalf("Error al procesar llave pública: %v", err)
-		}
-		n.MasterEntities[entity.Name] = pkb
-	}
-
-	priv, err := global.ObtenerIdentidad(configuration.CM.GetConfig().Identity.PrivKeyFile)
-	if err != nil {
-		log.Fatal("Error con la identidad:", err)
-	}
-
-	keyStr := n.SwarmKey
-	psk, err := global.DecodeV1PSK(keyStr)
-	if err != nil {
-		log.Fatal("Error cargando PSK:", err)
-	}
-
-	return psk, priv
-}
-
-func (n *Network) GetReachability() network.Reachability {
-	// Analizamos las direcciones actuales del host
-	hasPublicIP := false
-	for _, addr := range n.Host.Addrs() {
-		addrStr := addr.String()
-		// Si tiene una IP que no es privada ni loopback ni relay
-		if !strings.Contains(addrStr, "127.0.0.1") &&
-			!strings.Contains(addrStr, "192.168.") &&
-			!strings.Contains(addrStr, "10.") &&
-			!strings.Contains(addrStr, "p2p-circuit") {
-			hasPublicIP = true
-			break
-		}
-	}
-
-	if hasPublicIP {
-		return network.ReachabilityPublic
-	}
-	return network.ReachabilityPrivate
-}
-
-// Helper simple para filtrar IPs
-func isExternalAddr(addr string) bool {
-	// Si contiene p2p-circuit (Relay) o IPs privadas, no es "puro" público
-	isLocal := strings.Contains(addr, "127.0.0.1") ||
-		strings.Contains(addr, "192.168.") ||
-		strings.Contains(addr, "10.") ||
-		strings.Contains(addr, "p2p-circuit")
-	return !isLocal
 }

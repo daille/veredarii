@@ -124,6 +124,7 @@ func (n *Network) handleAuthStream(s network.Stream) {
 				return
 			}
 			ctx := context.Background()
+			n.PutCRDT("peers", remotePeer.String(), rec.EntityName)
 			n.NetworkPeerTopic.Publish(ctx, peerRequest)
 		}
 	}

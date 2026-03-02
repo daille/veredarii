@@ -136,6 +136,8 @@ func (n *Network) handleJoinStream(s network.Stream) {
 			log.Error("❌ Error al cifrar la solicitud:", err)
 			return
 		}
+
+		n.PutCRDT("members", joinRequest.EntityName, joinRequest.PublicKey)
 		n.NetworkMemberTopic.Publish(ctx, []byte(body))
 	}
 }

@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	"Veredarii/configuration"
 	"Veredarii/connection"
+	"Veredarii/localdatabase"
 	"Veredarii/localinterface"
 	"fmt"
 	"os"
@@ -74,9 +75,15 @@ func IniciaVeredarii() {
 	log.SetOutput(os.Stdout)
 	log.SetLevel(log.DebugLevel)
 
+	_, err := localdatabase.NewDatabase("./veredarii_data")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer localdatabase.DB.Close()
+
 	log.Debug("Cargando configuracion...")
 	configuration.CM = configuration.NewConfigurationManager()
-	err := configuration.CM.LoadConfig()
+	err = configuration.CM.LoadConfig()
 	if err != nil {
 		log.Fatal("Error cargando configuracion:", err)
 	}

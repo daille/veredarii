@@ -24,12 +24,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/configuration"
+	global "Veredarii/global"
 	"bufio"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/record"
+	log "github.com/sirupsen/logrus"
 )
 
 // --- FUNCIONES DE SOPORTE ---
@@ -49,4 +55,35 @@ func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
 	}
 
 	return envelope, nil
+}
+
+func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
+	var err error
+
+	record.RegisterType(&EntidadRecord{})
+	for _, entity := range n.Entities {
+		log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", entity.Name, entity.Key))
+		pubKeyRaw, err := hex.DecodeString(entity.Key)
+		if err != nil {
+			log.Fatalf("Error al decodificar hexadecimal: %v", err)
+		}
+		pkb, err := crypto.UnmarshalPublicKey(pubKeyRaw)
+		if err != nil {
+			log.Fatalf("Error al procesar llave pública: %v", err)
+		}
+		n.MasterEntities[entity.Name] = pkb
+	}
+
+	priv, err := global.ObtenerIdentidad(configuration.CM.GetConfig().Identity.PrivKeyFile)
+	if err != nil {
+		log.Fatal("Error con la identidad:", err)
+	}
+
+	keyStr := n.SwarmKey
+	psk, err := global.DecodeV1PSK(keyStr)
+	if err != nil {
+		log.Fatal("Error cargando PSK:", err)
+	}
+
+	return psk, priv
 }

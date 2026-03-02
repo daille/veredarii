@@ -46,10 +46,8 @@ import (
 func (n *Network) handleAPIProxyStream(s network.Stream) {
 	defer s.Close()
 	remotePeer := s.Conn().RemotePeer()
-	fmt.Println("remotePeer -> handleAPIProxyStream -> ", remotePeer)
-
-	pID := s.Conn().RemotePeer()
-	entidad := n.Peers[pID].Entity
+	PID := peer.ID(remotePeer.String())
+	entidad := n.Peers[PID].Entity
 
 	if !RBAC.HasPermition2Protocol(entidad, n.Name, global.ProtocolAPIProxy) {
 		log.Debug("Denegado, sin permiso al protocolo: ", entidad, n.Name, global.ProtocolAPIProxy)
