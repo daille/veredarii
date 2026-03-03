@@ -26,7 +26,6 @@ SOFTWARE.
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -61,7 +60,10 @@ func (n *Network) initDHT() {
 	done := make(chan bool)
 	n.publishServices()
 
-	go n.activeConnection2RelatedPeers()
+	go func() {
+		<-n.DHT.RefreshRoutingTable()
+		log.Debug("✅ Tabla de ruteo refrescada")
+	}()
 
 	for {
 		select {
@@ -72,31 +74,6 @@ func (n *Network) initDHT() {
 			return
 		}
 	}
-}
-
-func (n *Network) activeConnection2RelatedPeers() {
-	ctx := context.Background()
-	var wg sync.WaitGroup
-	numWorkers := len(n.RemoteResources.API)
-	wg.Add(numWorkers)
-
-	for _, remoteResource := range n.RemoteResources.API {
-		go func() {
-			for {
-				peer := n.BuscarServicio(ctx, remoteResource.Name)
-				if peer != nil {
-					log.Debug("Conectando al host ", peer.ID, " proveedor de ", remoteResource.Name)
-					n.Host.Connect(ctx, *peer)
-					wg.Done()
-					break
-				}
-				time.Sleep(1 * time.Minute)
-			}
-		}()
-
-	}
-
-	wg.Wait()
 }
 
 func (n *Network) publishServices() {
@@ -120,6 +97,7 @@ func (n *Network) anunciarServicio(ctx context.Context, serviceName string) {
 }
 
 func (n *Network) BuscarServicio(ctx context.Context, serviceName string) *peer.AddrInfo {
+
 	fmt.Println(len(n.DHT.RoutingTable().ListPeers()))
 	peerChan, err := n.RoutingDiscovery.FindPeers(ctx, serviceName, discovery.Limit(10))
 	if err != nil {

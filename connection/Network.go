@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	global "Veredarii/global"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -79,6 +80,7 @@ type Network struct {
 	DataStore          *crdt.Datastore
 	PebbleStore        *dspebble.Datastore
 	chPutHook          chan (global.KVType)
+	PS                 *pubsub.PubSub
 }
 
 type PeerType struct {
@@ -114,7 +116,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 
 func (n *Network) Connect() {
 	psk, priv := n.LoadConfig()
-	n.cargarWhitelist()
+	//n.cargarWhitelist()
 	miGater := &MiGater{peers: n.Peers}
 
 	rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()))
@@ -134,6 +136,7 @@ func (n *Network) Connect() {
 	}
 
 	if n.Pivots != nil {
+		log.Info("Iniciando libp2p como pivote")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
 			libp2p.Identity(priv),
@@ -155,6 +158,7 @@ func (n *Network) Connect() {
 			}),
 		)
 	} else {
+		log.Info("Iniciando libp2p sin pivote")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
 			libp2p.Identity(priv),
@@ -169,6 +173,7 @@ func (n *Network) Connect() {
 			libp2p.EnableNATService(),
 			libp2p.PrivateNetwork(psk),
 			libp2p.EnableRelay(),
+			libp2p.ForceReachabilityPublic(),
 		)
 	}
 	if err != nil {
@@ -190,6 +195,15 @@ func (n *Network) Connect() {
 	for _, addr := range n.Host.Addrs() {
 		fmt.Printf("👉 %s/p2p/%s\n", addr, peerID)
 	}
+
+	n.PS, err = pubsub.NewGossipSub(context.Background(), n.Host,
+		pubsub.WithPeerExchange(true),
+		pubsub.WithFloodPublish(true), // publica a TODOS los peers, no solo el mesh
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	go n.InitBroadcast()
 	go n.MonitorConnections(priv)
 	go n.initDHT()
@@ -197,11 +211,44 @@ func (n *Network) Connect() {
 
 	go func() {
 		n.DataStore, n.PebbleStore = n.NewDataStore()
-		peers := n.Query("peers")
+		peers := n.Query(PEERS)
 		for _, peerFounded := range peers {
-			log.Debug(fmt.Sprintf("Peer '%s' de la entidad '%s'", peerFounded.Key, peerFounded.Name))
-			n.Peers[peer.ID(peerFounded.Key)] = PeerType{ID: peer.ID(peerFounded.Key), Entity: peerFounded.Name}
+			id, err := peer.Decode(peerFounded.Key)
+			if err != nil {
+				log.Error("❌ Error decodificando peer: ", peerFounded.Key, " : ", err)
+				continue
+			}
+			n.Peers[id] = PeerType{ID: id, Entity: peerFounded.Name}
 		}
+
+		members := n.Query(MEMBERS)
+		for _, memberFounded := range members {
+
+			// 1. Convertir HEX string a []byte
+			pubBytes, err := hex.DecodeString(memberFounded.Name)
+			if err != nil {
+				log.Error("❌ Error decodificando llave publica del miembro :", memberFounded.Key, " Error: ", err)
+				log.Error("✅ Key {", memberFounded.Name, "}")
+				return
+			}
+
+			// 2. Unmarshal usando la librería de libp2p
+			pubKey, err := crypto.UnmarshalPublicKey(pubBytes)
+			if err != nil {
+				// Aquí es donde te daba el error "invalid wire-format"
+				fmt.Printf("❌ Error unmarshal libp2p: %v\n", err)
+				return
+			}
+
+			if err != nil {
+				log.Error("❌ Error decodificando llave publica del miembro :", memberFounded.Key, " Error: ", err)
+				log.Error("✅ Key {", memberFounded.Name, "}")
+
+				continue
+			}
+			n.MasterEntities[memberFounded.Key] = pubKey
+		}
+
 		n.Host.Network().Notify(&network.NotifyBundle{
 			ConnectedF: func(net network.Network, conn network.Conn) {
 				log.Infof("Peer conectado: %s", conn.RemotePeer())

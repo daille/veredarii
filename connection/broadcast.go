@@ -24,37 +24,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"Veredarii/configuration"
 	global "Veredarii/global"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 	log "github.com/sirupsen/logrus"
 )
 
 func (n *Network) InitBroadcast() {
-	ctx := context.Background()
-	ps, err := pubsub.NewGossipSub(ctx, n.Host)
-	if err != nil {
-		log.Error("Error al crear el pubsub:", err)
-	}
-	n.NetworkMemberTopic, err = ps.Join("members")
-	if err != nil {
-		log.Error("Error al unirse al topic:", err)
-	}
-	sub, err := n.NetworkMemberTopic.Subscribe()
-	if err != nil {
-		log.Error("Error al suscribirse al topic:", err)
-	}
-	go n.listenerMembers(sub)
-
-	n.NetworkPeerTopic, err = ps.Join("peers")
+	var err error
+	n.NetworkPeerTopic, err = n.PS.Join("peers")
 	if err != nil {
 		log.Error("Error al unirse al topic:", err)
 	}
@@ -66,95 +51,75 @@ func (n *Network) InitBroadcast() {
 }
 
 func (n *Network) listenerPeers(subPeer *pubsub.Subscription) {
+	log.Debug("Iniciando listener de PEERS")
 	preKey := sha256.Sum256([]byte(n.SwarmKey))
 	key := preKey[:]
 	for {
 		ctx := context.Background()
 		msg, err := subPeer.Next(ctx)
 		if err != nil {
-			log.Error("Error al recibir el mensaje:", err)
+			log.Error(global.Red("Error al recibir el mensaje:"), err)
 			continue
 		}
 		descifrado, err := global.Decrypt(msg.Data, key)
 		if err != nil {
-			log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
+			log.Error(global.Red("Error: No pude descifrar el mensaje o no estoy autorizado."), err)
 			continue
 		}
-		fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
+		fmt.Printf(global.Green("Mensaje recibido de %s: %s\n"), msg.ReceivedFrom, string(descifrado))
 
 		var peerRequest PeerRequest
 		err = json.Unmarshal(descifrado, &peerRequest)
 		if err != nil {
-			log.Error("❌ Error deserializando solicitud:", err)
+			log.Error(global.Red("❌ Error deserializando solicitud:"), err)
 			continue
 		}
-		log.Info("Solicitud deserializada:", peerRequest.EntityName, peerRequest.PeerID)
+		fmt.Printf(global.Green("Solicitud deserializada:"), peerRequest.EntityName, peerRequest.PeerID)
 		PID, err := peer.Decode(peerRequest.PeerID)
 		if err != nil {
 			log.Error("❌ Error decodificando llave publica:", err)
 			continue
 		}
 
-		n.PutCRDT("peers", peerRequest.PeerID, peerRequest.EntityName)
+		if peerRequest.PeerID == n.Host.ID().String() {
+			log.Debug(global.Yellow("SELF"))
+			continue
+		}
 
 		n.MutexSesiones.Lock()
 		n.Peers[PID] = PeerType{
 			Entity: peerRequest.EntityName,
 		}
 		n.MutexSesiones.Unlock()
+
+		n.connection2RelatedPeer(peerRequest)
+
 	}
 }
 
-func (n *Network) listenerMembers(sub *pubsub.Subscription) {
-
-	preKey := sha256.Sum256([]byte(n.SwarmKey))
-	key := preKey[:]
-	for {
-		ctx := context.Background()
-		msg, err := sub.Next(ctx)
-		if err != nil {
-			log.Error("Error al recibir el mensaje:", err)
-			continue
-		}
-		descifrado, err := global.Decrypt(msg.Data, key)
-		if err != nil {
-			log.Error("Error: No pude descifrar el mensaje o no estoy autorizado. ", err)
-			continue
-		}
-		fmt.Printf("Mensaje recibido de %s: %s\n", msg.ReceivedFrom, string(descifrado))
-
-		var joinRequest JoinRequest
-		err = json.Unmarshal(descifrado, &joinRequest)
-		if err != nil {
-			log.Error("❌ Error deserializando solicitud:", err)
-			continue
-		}
-		log.Info("Solicitud deserializada:", joinRequest.EntityName)
-		pubKey, err := global.ParsePubKeyRecibida(joinRequest.PublicKey)
-		if err != nil {
-			log.Error("❌ Error decodificando llave publica:", err)
-			continue
-		}
-
-		// @TODO Validar que el miembro enviado sea válido segun los estándares propios
-
-		// Ingresar entidad a la DB
-		n.PutCRDT("members", joinRequest.EntityName, joinRequest.PublicKey)
-
-		// Ingresar entidad a la lista de entidades activas
-		n.MutexSesiones.Lock()
-		n.MasterEntities[joinRequest.EntityName] = pubKey
-		n.MutexSesiones.Unlock()
-
-		// Escribe entidad en el archivo de configuracion (obsoleto)
-		data, err := base64.StdEncoding.DecodeString(joinRequest.PublicKey)
-		if err != nil {
-			log.Fatal("Error decodificando Base64:", err)
-		}
-		configuration.CM.AddEntity(n.Name, global.KVType{
-			Name: joinRequest.EntityName,
-			Key:  hex.EncodeToString(data),
-		})
-
+func (n *Network) connection2RelatedPeer(peerRequest PeerRequest) {
+	ctx := context.Background()
+	PID, err := peer.Decode(peerRequest.PeerID)
+	if err != nil {
+		log.Error("❌ Error decodificando llave publica:", err)
+		return
 	}
+
+	ip, _ := peerRequest.Address.ValueForProtocol(ma.P_IP4)
+	correctAddr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%s", ip, "9200"))
+
+	info := peer.AddrInfo{
+		ID:    PID,
+		Addrs: []ma.Multiaddr{correctAddr},
+	}
+	// 3. Intentar la conexión
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := n.Host.Connect(ctx, info); err != nil {
+		log.Error("❌ Error al conectar al peer: ", err)
+		return
+	}
+
+	log.Info(fmt.Sprintf("✅ Conectado exitosamente a %s (%s)", peerRequest.EntityName, PID))
 }

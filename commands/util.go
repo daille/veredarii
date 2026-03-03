@@ -96,7 +96,7 @@ func inspectLocalDB2(dbPath string) error {
 	resp := []global.KVType{}
 
 	results, err = ds.Query(context.Background(), query.Query{
-		Prefix: "/crdt-data/s/k/" + bucket,
+		Prefix: "/crdt-data/s/k/",
 	})
 	if err != nil {
 		log.Error("error en query: %w", err)
@@ -111,7 +111,7 @@ func inspectLocalDB2(dbPath string) error {
 		if !strings.HasSuffix(r.Key, "/v") {
 			continue
 		}
-		cleanKey := strings.TrimPrefix(r.Key, "/crdt-data/s/k/"+bucket+"/")
+		cleanKey := strings.TrimPrefix(r.Key, "/crdt-data/s/k/")
 		cleanKey = strings.TrimSuffix(cleanKey, "/v")
 		resp = append(resp, global.KVType{Key: cleanKey, Name: string(r.Entry.Value)})
 	}

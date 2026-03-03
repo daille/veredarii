@@ -1,8 +1,32 @@
 package connection
 
+/*
+MIT License
+
+Copyright (c) 2026 Juan Carlos Daille
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 import (
 	global "Veredarii/global"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -18,11 +42,14 @@ import (
 	"github.com/ipfs/go-datastore/query"
 	crdt "github.com/ipfs/go-ds-crdt"
 	dspebble "github.com/ipfs/go-ds-pebble"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	log "github.com/sirupsen/logrus"
 )
+
+const PEERS string = "peers"
+const MEMBERS string = "members"
 
 func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
 
@@ -51,17 +78,8 @@ func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
 	}
 
 	ctx := context.Background()
-	//ps, err := pubsub.NewGossipSub(ctx, n.Host)
-	ps, err := pubsub.NewGossipSub(ctx, n.Host,
-		pubsub.WithPeerExchange(true),
-		pubsub.WithFloodPublish(true), // publica a TODOS los peers, no solo el mesh
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	crdtNamespace := datastore.NewKey("/crdt-data")
-	broadcaster, err := crdt.NewPubSubBroadcaster(ctx, ps, topic)
+	broadcaster, err := crdt.NewPubSubBroadcaster(ctx, n.PS, topic)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -158,10 +176,17 @@ func (n *Network) PutHookHandler() {
 	for kv := range n.chPutHook {
 		// Members
 		if rxMembers.Match([]byte(kv.Key)) {
-			pubKey, err := global.ParsePubKeyRecibida(kv.Name)
+
+			pubBytes, err := hex.DecodeString(kv.Name)
 			if err != nil {
-				log.Error("❌ Error decodificando llave publica:", err)
-				continue
+				fmt.Printf("❌ Error decodificando hex: %v\n", err)
+				return
+			}
+
+			pubKey, err := crypto.UnmarshalPublicKey(pubBytes)
+			if err != nil {
+				fmt.Printf("❌ Error unmarshal libp2p: %v\n", err)
+				return
 			}
 			n.MutexSesiones.Lock()
 			n.MasterEntities[kv.Key] = pubKey
@@ -173,8 +198,14 @@ func (n *Network) PutHookHandler() {
 		if rxPeers.Match([]byte(kv.Key)) {
 			cleanKey := strings.TrimPrefix(kv.Key, "/peers/")
 			log.Debug("✅ Peer {", cleanKey, "}")
+			id, err := peer.Decode(cleanKey)
+			if err != nil {
+				log.Error("❌ Error decodificando peer: ", cleanKey, " : ", err)
+				continue
+			}
+
 			n.MutexSesiones.Lock()
-			n.Peers[peer.ID(cleanKey)] = PeerType{
+			n.Peers[id] = PeerType{
 				Entity: kv.Name,
 			}
 			n.MutexSesiones.Unlock()

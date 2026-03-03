@@ -25,8 +25,6 @@ SOFTWARE.
 */
 import (
 	global "Veredarii/global"
-	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +32,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	ma "github.com/multiformats/go-multiaddr"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
@@ -47,9 +46,10 @@ type JoinRequest struct {
 }
 
 type PeerRequest struct {
-	EntityName string `json:"entity"`
-	PeerID     string `json:"peerid"`
-	PublicKey  string `json:"pubkey"`
+	EntityName string       `json:"entity"`
+	PeerID     string       `json:"peerid"`
+	PublicKey  string       `json:"pubkey"`
+	Address    ma.Multiaddr `json:"address"`
 }
 
 var globalUnionLimiter = rate.NewLimiter(rate.Limit(0.2), 3)
@@ -81,7 +81,7 @@ func (n *Network) handleJoinStream(s network.Stream) {
 	log.Info("Solicitud deserializada:", joinRequest.EntityName)
 
 	log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", joinRequest.EntityName, joinRequest.PublicKey))
-	pubKey, err := global.ParsePubKeyRecibida(joinRequest.PublicKey)
+	_, err = global.ParsePubKeyRecibida(joinRequest.PublicKey)
 	if err != nil {
 		log.Error("❌ Error decodificando llave publica:", err)
 		return
@@ -124,20 +124,6 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		faltante := time.Until(expiracion)
 		log.Info(fmt.Sprintf("Expira en: %v\n", faltante.Round(time.Minute)))
 
-		n.MutexSesiones.Lock()
-		n.MasterEntities[invitationSplit[2]] = pubKey
-		n.MutexSesiones.Unlock()
-
-		ctx := context.Background()
-		preKey := sha256.Sum256([]byte(n.SwarmKey))
-		key := preKey[:]
-		body, err := global.Encrypt(body, key)
-		if err != nil {
-			log.Error("❌ Error al cifrar la solicitud:", err)
-			return
-		}
-
-		n.PutCRDT("members", joinRequest.EntityName, joinRequest.PublicKey)
-		n.NetworkMemberTopic.Publish(ctx, []byte(body))
+		n.PutCRDT(MEMBERS, invitationSplit[2], joinRequest.PublicKey)
 	}
 }
