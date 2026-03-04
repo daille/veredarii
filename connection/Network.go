@@ -46,6 +46,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
@@ -81,6 +82,8 @@ type Network struct {
 	PebbleStore        *dspebble.Datastore
 	chPutHook          chan (global.KVType)
 	PS                 *pubsub.PubSub
+	PK                 crypto.PrivKey
+	PSK                pnet.PSK
 }
 
 type PeerType struct {
@@ -115,7 +118,7 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 }
 
 func (n *Network) Connect() {
-	psk, priv := n.LoadConfig()
+	n.LoadConfig()
 	//n.cargarWhitelist()
 	miGater := &MiGater{peers: n.Peers}
 
@@ -139,7 +142,7 @@ func (n *Network) Connect() {
 		log.Info("Iniciando libp2p como pivote")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
-			libp2p.Identity(priv),
+			libp2p.Identity(n.PK),
 			libp2p.ConnectionManager(cmgr),
 			libp2p.ConnectionGater(miGater),
 			libp2p.ResourceManager(rmgr),
@@ -148,7 +151,7 @@ func (n *Network) Connect() {
 			libp2p.DefaultMuxers,
 			libp2p.EnableRelayService(),
 			libp2p.EnableNATService(),
-			libp2p.PrivateNetwork(psk),
+			libp2p.PrivateNetwork(n.PSK),
 			libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
 				if n.ExternalAddress == "" {
 					return addrs
@@ -161,7 +164,7 @@ func (n *Network) Connect() {
 		log.Info("Iniciando libp2p sin pivote")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
-			libp2p.Identity(priv),
+			libp2p.Identity(n.PK),
 			libp2p.ConnectionManager(cmgr),
 			libp2p.ConnectionGater(miGater),
 			libp2p.ResourceManager(rmgr),
@@ -171,7 +174,7 @@ func (n *Network) Connect() {
 			libp2p.NATPortMap(),
 			libp2p.EnableHolePunching(),
 			libp2p.EnableNATService(),
-			libp2p.PrivateNetwork(psk),
+			libp2p.PrivateNetwork(n.PSK),
 			libp2p.EnableRelay(),
 			libp2p.ForceReachabilityPublic(),
 		)
@@ -205,7 +208,7 @@ func (n *Network) Connect() {
 	}
 
 	go n.InitBroadcast()
-	go n.MonitorConnections(priv)
+	go n.MonitorConnections(n.PK)
 	go n.initDHT()
 	go n.FileSystem()
 

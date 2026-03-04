@@ -33,7 +33,6 @@ import (
 	"io"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/record"
 	log "github.com/sirupsen/logrus"
 )
@@ -57,7 +56,7 @@ func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
 	return envelope, nil
 }
 
-func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
+func (n *Network) LoadConfig() {
 	var err error
 
 	record.RegisterType(&EntidadRecord{})
@@ -85,5 +84,6 @@ func (n *Network) LoadConfig() (pnet.PSK, crypto.PrivKey) {
 		log.Fatal("Error cargando PSK:", err)
 	}
 
-	return psk, priv
+	n.PSK = psk
+	n.PK = priv
 }
