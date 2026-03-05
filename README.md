@@ -1,2 +1,21 @@
-# veredarii
-Software mensajero de datos con los que se pueden armar redes distribuidas, seguras y autogestionadas
+# ![Veredarii red de interoperabilidad](logo.png)
+
+## Manifiesto Veredarii: La Red de Interoperabilidad del Futuro Distribuido
+
+En la antigua Roma, el **Veredarius** era el encargado de llevar la información crítica a través de las fronteras con velocidad y eficiencia. Hoy, nuestra red recupera ese espíritu para la era digital. **Veredarii** no es solo una herramienta; es una infraestructura de interoperabilidad diseñada bajo los principios de soberanía y libertad tecnológica.
+
+---
+
+### Nuestros Pilares
+
+* **Interoperabilidad sin Permisos:** Creemos en una red donde las entidades puedan comunicarse sin importar su arquitectura interna, eliminando los silos de información.
+* **Seguridad por Diseño:** Basada en una arquitectura de pares (P2P), la seguridad no depende de una autoridad central, sino de la robustez criptográfica de cada entidad.
+* **Gobernanza Descentralizada:** El poder reside en los participantes. No existe un punto único de falla ni una entidad que pueda censurar o apagar la comunicación.
+* **Código Abierto:** La confianza se construye a través de la transparencia. Veredarii es, y siempre será, un bien público digital.
+
+---
+
+> "En un mundo fragmentado, la verdadera fuerza reside en la capacidad de conectar sin someterse."
+
+---
+*Veredarii - 2026*
