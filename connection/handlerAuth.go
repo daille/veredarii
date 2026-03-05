@@ -213,23 +213,12 @@ func FirmarRecordConULID(name string, pID peer.ID, ttl time.Duration) (*EntidadR
 	pkb_auto := privKey.GetPublic()
 	valid, err := pkb_auto.Verify(msgAuth, signature)
 	if err != nil {
-		log.Fatalf("Error al verificar firma: %v", err)
+		log.Error("Error al verificar firma: ", err)
+		return nil, err
 	}
-
-	pubKeyRaw, err := hex.DecodeString("080112202c06e7dbf218d0f26edb337c1e5f90dbc3f729bc2e08feb0a78863c1782e62af")
-	if err != nil {
-		log.Fatalf("Error al decodificar hexadecimal: %v", err)
-	}
-	pkb, err := crypto.UnmarshalPublicKey(pubKeyRaw)
-	if err != nil {
-		log.Fatalf("Error al procesar llave pública: %v", err)
-	}
-
-	valid, err = pkb.Verify(msgAuth, signature)
 	if !valid {
-		log.Debug("Firma inválida")
-	} else {
-		log.Debug("Firma válida")
+		log.Error("Firma inválida")
+		return nil, fmt.Errorf("firma inválida")
 	}
 
 	return &EntidadRecord{
