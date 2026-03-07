@@ -28,16 +28,16 @@ import (
 	"Veredarii/connection"
 	"Veredarii/localdatabase"
 	"Veredarii/localinterface"
+	pluginmanager "Veredarii/pluginManager"
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
-	prefixed "github.com/x-cray/logrus-prefixed-formatter"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var startCmd = &cobra.Command{
@@ -67,32 +67,38 @@ func IniciaVeredarii() {
 	fmt.Printf("│ Versión: %-62s│\n", Version)
 	fmt.Print("╰────────────────────────────────────────────────────────────────────────╯\n\n")
 
-	log.SetFormatter(&prefixed.TextFormatter{
-		TimestampFormat: "2006-01-02 15:04:05",
-		FullTimestamp:   true,
-		ForceFormatting: true,
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
 	})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.DebugLevel)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+	slog := slog.With(
+		slog.String("comando", "start"),
+	)
 
 	_, err := localdatabase.NewDatabase("./veredarii_data")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Error al crear la base de datos", "error", err.Error())
 	}
 	defer localdatabase.DB.Close()
 
-	log.Debug("Cargando configuracion...")
+	slog.Debug("Cargando configuracion...")
 	configuration.CM = configuration.NewConfigurationManager()
 	err = configuration.CM.LoadConfig()
 	if err != nil {
-		log.Fatal("Error cargando configuracion:", err)
+		slog.Error("Error cargando configuracion:", "error", err.Error())
 	}
 	connection.NM = connection.NewNetworkManager()
 	for _, network := range configuration.CM.GetConfig().Networks {
-		log.Debug("Agregando red: ", network.Name)
+		slog.Info("Agregando red", "red", network.Name)
 		connection.NM.AddNetwork(network)
 	}
 	go connection.NM.StartProcess()
+
+	ctx := context.Background()
+	plugManager, _ := pluginmanager.NewPluginManager(ctx)
+	plugManager.StartWatcher("./plugins")
+
 	connection.NM.ChannelNetworks <- "init"
 
 	sigCh := make(chan os.Signal, 1)
@@ -101,7 +107,8 @@ func IniciaVeredarii() {
 	time.Sleep(3 * time.Second)
 	go localinterface.Start()
 
-	fmt.Println("Nodo corriendo. Presiona Ctrl+C para detener.")
+	fmt.Println("Veredarii en ejecución. Presiona Ctrl+C para detener.")
+	slog.Info("Veredarii en ejecución.")
 
 	<-sigCh
 }

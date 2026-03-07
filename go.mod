@@ -6,6 +6,7 @@ require (
 	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/ipfs/boxo v0.36.0
@@ -18,9 +19,10 @@ require (
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/oklog/ulid/v2 v2.1.1
+	github.com/planetscale/vtprotobuf v0.6.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.10.2
-	github.com/x-cray/logrus-prefixed-formatter v0.5.2
+	github.com/tetratelabs/wazero v1.11.0
 	golang.org/x/crypto v0.47.0
 	golang.org/x/time v0.12.0
 	google.golang.org/protobuf v1.36.11
@@ -50,7 +52,6 @@ require (
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gammazero/chanqueue v1.1.1 // indirect
 	github.com/gammazero/deque v1.2.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
@@ -96,9 +97,7 @@ require (
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.1 // indirect
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
@@ -115,8 +114,6 @@ require (
 	github.com/multiformats/go-multistream v0.6.1 // indirect
 	github.com/multiformats/go-varint v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/onsi/gomega v1.30.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
@@ -167,7 +164,6 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
-	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
