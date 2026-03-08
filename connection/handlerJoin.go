@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/configuration"
 	global "Veredarii/global"
 	"encoding/json"
 	"fmt"
@@ -108,6 +109,22 @@ func (n *Network) handleJoinStream(s network.Stream) {
 	if invitationSplit[2] != joinRequest.EntityName {
 		log.Debug(fmt.Sprintf("Invitación invitado inválida: %s != %s", invitationSplit[2], joinRequest.EntityName))
 		log.Error("❌ Error descifrando invitación")
+		return
+	}
+
+	a := false
+	for _, b := range configuration.CM.GetConfig().Networks[0].Entities {
+		if b.Name == invitationSplit[0] {
+			a = true
+			if !global.VerifyInvitation(invitation, b.Key) {
+				log.Error("❌ Error verificando firma")
+				return
+			}
+			break
+		}
+	}
+	if !a {
+		log.Error("❌ Error verificando firma, entidad no encontrada")
 		return
 	}
 

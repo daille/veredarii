@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -180,6 +181,14 @@ func DecipherInvitation(tokenHex string, invitador string, key []byte) string {
 	}
 
 	return string(decrypted)
+}
+
+func VerifyInvitation(invitation string, key string) bool {
+	invitationSplit := strings.Split(invitation, "|")
+	msg := []byte(invitationSplit[0] + "|" + invitationSplit[1])
+	sig, _ := base64.StdEncoding.DecodeString(invitationSplit[2])
+	pub, _ := hex.DecodeString(key)
+	return ed25519.Verify(pub, msg, sig)
 }
 
 func ParsePubKeyRecibida(pubString string) (crypto.PubKey, error) {

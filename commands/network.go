@@ -69,11 +69,12 @@ var inviteCmd = &cobra.Command{
 			fmt.Println("Error cargando configuracion:", err)
 			return
 		}
+		config := configuration.CM.GetConfig()
 
 		passphrase := "mi frase super secreta para la red"
 		salt := "mi-red-p2p-secreta-unique-salt"
 
-		key := global.GenerarLlaveDesdeFrase(passphrase, salt)
+		aesKey := global.GenerarLlaveDesdeFrase(passphrase, salt)
 
 		inv := global.InvitacionType{
 			Inviter:    configuration.CM.GetConfig().Identity.Entity,
@@ -83,7 +84,7 @@ var inviteCmd = &cobra.Command{
 			Expiration: time.Now().Add(24 * time.Hour),
 		}
 
-		token := global.CipherInvitation(inv, key)
+		token := global.CipherInvitation(inv, aesKey)
 		fmt.Printf("Token: %s\n\n", token)
 
 		err = os.MkdirAll("./invitations", 0755)
@@ -91,8 +92,24 @@ var inviteCmd = &cobra.Command{
 			fmt.Println("Error al crear el directorio:", err)
 			return
 		}
-		pivot := base64.StdEncoding.EncodeToString([]byte(configuration.CM.GetConfig().Networks[0].Pivots[0]))
-		vni := []byte(token + separator + pivot)
+		pivot := base64.StdEncoding.EncodeToString([]byte(config.Networks[0].Pivots[0]))
+
+		// Firma digital de (token|pivot) con la clave privada del invitador
+		privKey, err := global.ObtenerIdentidad(config.Identity.PrivKeyFile)
+		if err != nil {
+			fmt.Println("❌ Error obteniendo la identidad del invitador:", err)
+			return
+		}
+		datosFirmados := []byte(token + separator + pivot)
+		sigBytes, err := privKey.Sign(datosFirmados)
+		if err != nil {
+			fmt.Println("❌ Error firmando la invitación:", err)
+			return
+		}
+		firma := base64.StdEncoding.EncodeToString(sigBytes)
+
+		// Formato final: token|pivot|firma
+		vni := []byte(token + separator + pivot + separator + firma)
 		err = os.WriteFile("./invitations/"+network+"."+entity+".vni", vni, 0644)
 		if err != nil {
 			fmt.Println("Error al escribir el archivo:", err)
@@ -234,18 +251,23 @@ var joinCmd = &cobra.Command{
 		}
 		cruda := string(invBytes)
 		inv.Close()
-		both := strings.Split(cruda, separator)
-		if len(both) < 2 {
+		partes := strings.Split(cruda, separator)
+		if len(partes) < 2 {
 			fmt.Println("❌ Error: El archivo de invitación no es válido")
 			return
 		}
-		invitation := both[0]
-		pivotEncoded := strings.ReplaceAll(both[1], "\n", "")
+		invitation := partes[0]
+		pivotEncoded := strings.ReplaceAll(partes[1], "\n", "")
 		pivot, err := base64.StdEncoding.DecodeString(pivotEncoded)
 		if err != nil {
 			fmt.Println("❌ Error al decodificar el pivot:", err)
 			return
 		}
+		// Firma digital incluida en el archivo (campo 3), disponible para verificación futura
+		// var firmaInvitacion string
+		// if len(partes) >= 3 {
+		// 	firmaInvitacion = strings.ReplaceAll(partes[2], "\n", "")
+		// }
 
 		// Crea llaves de la entidad (si aun no tiene) o usa las existentes
 		privateKey, err := global.ObtenerIdentidad("./" + entity + ".key")
