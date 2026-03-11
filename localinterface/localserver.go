@@ -77,6 +77,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 	r.Use(middleware.Logger)
 
 	for _, network := range configuration.CM.GetConfig().Networks {
+		// Rutas a tratar como proxy
 		for _, service := range network.RemoteResources.API {
 			r.Get("/"+network.Name+"/"+service.ResourcePath, func(w http.ResponseWriter, r *http.Request) {
 

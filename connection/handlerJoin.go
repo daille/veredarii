@@ -92,9 +92,10 @@ func (n *Network) handleJoinStream(s network.Stream) {
 	salt := "mi-red-p2p-secreta-unique-salt"
 	key := global.GenerarLlaveDesdeFrase(passphrase, salt)
 
-	invitation := global.DecipherInvitation(joinRequest.Invitation, joinRequest.InviterName, key)
+	invitationSplit := strings.Split(joinRequest.Invitation, "|")
+	invitation := global.DecipherInvitation(invitationSplit[0]+"|"+invitationSplit[1], joinRequest.InviterName, key)
 	log.Info("Invitación descifrada:", invitation)
-	invitationSplit := strings.Split(invitation, ";")
+	invitationSplit = strings.Split(invitation, ";")
 
 	if invitationSplit[0] != joinRequest.InviterName {
 		log.Debug(fmt.Sprintf("Invitación invitador inválida: %s != %s", invitationSplit[0], joinRequest.InviterName))
@@ -117,7 +118,7 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		if b.Name == invitationSplit[0] {
 			a = true
 			if !global.VerifyInvitation(invitation, b.Key) {
-				log.Error("❌ Error verificando firma")
+				log.Error("❌ Error verificando firma de la invitacion")
 				return
 			}
 			break

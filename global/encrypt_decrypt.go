@@ -154,22 +154,22 @@ func CipherInvitation(i InvitacionType, key []byte) string {
 func DecipherInvitation(tokenHex string, invitador string, key []byte) string {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Fatalf("Error creando cipher: %v", err)
+		log.Error("Error creando cipher: ", err)
 	}
 
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Fatalf("Error creando GCM: %v", err)
+		log.Error("Error creando GCM: ", err)
 	}
 
 	data, err := hex.DecodeString(tokenHex)
 	if err != nil {
-		log.Fatalf("Error decodificando hex: %v", err)
+		log.Error("Error decodificando hex: ", err)
 	}
 
 	nonceSize := aead.NonceSize()
 	if len(data) < nonceSize {
-		log.Fatalf("Token demasiado corto")
+		log.Error("Token demasiado corto")
 	}
 
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
@@ -177,7 +177,7 @@ func DecipherInvitation(tokenHex string, invitador string, key []byte) string {
 
 	decrypted, err := aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
-		log.Fatalf("Error de autenticación: El token fue alterado o la llave es incorrecta")
+		log.Error("Error de autenticación: El token fue alterado o la llave es incorrecta")
 	}
 
 	return string(decrypted)
