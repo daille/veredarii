@@ -1,0 +1,79 @@
+package cmd
+
+/*
+MIT License
+
+Copyright (c) 2026 Juan Carlos Daille
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+import (
+	"encoding/gob"
+	"fmt"
+	"net"
+	"os"
+	"runtime"
+
+	log "github.com/sirupsen/logrus"
+)
+
+type Mensaje struct {
+	Entrada []string
+	Salida  string
+}
+
+func SocketListener() {
+	socketPath := "./veredarii.sock"
+	if runtime.GOOS == "windows" {
+		socketPath = `veredarii.sock`
+	}
+	if _, err := os.Stat(socketPath); err == nil {
+		os.Remove(socketPath)
+	}
+	os.Remove(socketPath) // Limpieza previa
+
+	l, err := net.Listen("unix", socketPath)
+	if err != nil {
+		log.Fatal("Error Listen:", err)
+	}
+	defer l.Close()
+
+	fmt.Println("Servidor esperando mensajes...")
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			continue
+		}
+
+		go func(c net.Conn) {
+			defer c.Close()
+
+			var m Mensaje
+			decoder := gob.NewDecoder(c)
+			if err := decoder.Decode(&m); err == nil {
+				fmt.Printf("Recibido: %+v\n", m)
+
+				encoder := gob.NewEncoder(c)
+				respuesta := Mensaje{Salida: "Recibido correctamente"}
+				encoder.Encode(respuesta)
+			}
+		}(conn)
+	}
+}
