@@ -1,0 +1,19 @@
+[OK] Veredarii version
+[OK] Veredarii start
+
+[OK] Veredarii create --network <name> --entity <entityName> --port <port>
+[OK] Veredarii ls
+[OK] Veredarii invite --network <name> --entity <entityName>
+[OK] Veredarii join   --network <name> --entity <entityName> --invitation <invitation.vni> --inviter <entityName> --key <key>
+
+[OK] Veredarii pivot ls --network <name>
+Veredarii pivot add
+Veredarii pivot remove
+                  
+[OK] Veredarii entity ls --network <name>
+Veredarii entity block
+Veredarii entity unblock
+                  
+[OK] Veredarii resources ls               
+Veredarii resources add    --type <type> --resource <resource> --local <localpath> --handler  <file.wasm>
+Veredarii resources remove
