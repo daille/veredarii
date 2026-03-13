@@ -37,6 +37,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/cobra"
 )
@@ -126,7 +127,7 @@ var joinCmd = &cobra.Command{
 			return
 		}
 
-		s, err := h.NewStream(ctx, info.ID, global.ProtocolJoin)
+		s, err := h.NewStream(ctx, info.ID, protocol.ID(global.ProtocolJoin))
 		if err != nil {
 			fmt.Println("❌ Error abriendo stream:", err)
 			return

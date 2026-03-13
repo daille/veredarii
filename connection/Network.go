@@ -27,6 +27,7 @@ import (
 	global "Veredarii/global"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -47,6 +48,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
@@ -54,6 +56,8 @@ import (
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+const Timeout = 5 * time.Minute
 
 type Network struct {
 	Name            string
@@ -84,8 +88,13 @@ type Network struct {
 	PS                 *pubsub.PubSub
 	PK                 crypto.PrivKey
 	PSK                pnet.PSK
-	Streams            map[string]map[peer.ID]network.Stream
+	Streams            map[string]map[string]StreamSession
 	MutexStreams       sync.Mutex
+}
+
+type StreamSession struct {
+	stream network.Stream
+	timer  *time.Timer
 }
 
 type PeerType struct {
@@ -96,10 +105,10 @@ type PeerType struct {
 
 func NewNetwork(name string, port string, swarmKey string, pivots []string, address []string, externalAddress string, topics []global.TopicType, entities []global.KVType, resources global.ResourcesType, remoteResources global.ResourcesType) *Network {
 
-	s := make(map[string]map[peer.ID]network.Stream)
-	s[global.ProtocolAPIProxy] = make(map[peer.ID]network.Stream)
-	s[global.ProtocolFileSystem] = make(map[peer.ID]network.Stream)
-	s[global.ProtocolFileSystemStat] = make(map[peer.ID]network.Stream)
+	s := make(map[string]map[string]StreamSession)
+	s[global.ProtocolAPIProxy] = make(map[string]StreamSession)
+	s[global.ProtocolFileSystem] = make(map[string]StreamSession)
+	s[global.ProtocolFileSystemStat] = make(map[string]StreamSession)
 
 	N := Network{
 		Name:            name,
@@ -196,12 +205,12 @@ func (n *Network) Connect() {
 	defer n.Host.Close()
 
 	// Protocolos de funcionamiento de la red
-	n.Host.SetStreamHandler(global.ProtocolAuth, n.handleAuthStream)
-	n.Host.SetStreamHandler(global.ProtocolJoin, n.handleJoinStream)
+	n.Host.SetStreamHandler(protocol.ID(global.ProtocolAuth), n.handleAuthStream)
+	n.Host.SetStreamHandler(protocol.ID(global.ProtocolJoin), n.handleJoinStream)
 	// Protocolos de comunicación
-	n.Host.SetStreamHandler(global.ProtocolAPIProxy, n.handleAPIProxyStream)
-	n.Host.SetStreamHandler(global.ProtocolFileSystem, n.handleFileFetch)
-	n.Host.SetStreamHandler(global.ProtocolFileSystemStat, n.handleFileStat)
+	n.Host.SetStreamHandler(protocol.ID(global.ProtocolAPIProxy), n.handleAPIProxyStream)
+	n.Host.SetStreamHandler(protocol.ID(global.ProtocolFileSystem), n.handleFileFetch)
+	n.Host.SetStreamHandler(protocol.ID(global.ProtocolFileSystemStat), n.handleFileStat)
 
 	fmt.Println("ID del peer:", n.Host.ID())
 	peerID := n.Host.ID().String()
@@ -296,6 +305,69 @@ func (n *Network) Connect() {
 	}()
 
 	select {}
+}
+
+/*func (n *Network) getOrCreateStream(protocol string, targetID peer.AddrInfo) (network.Stream, error) {
+	n.MutexStreams.Lock()
+	defer n.MutexStreams.Unlock()
+
+	if s, ok := n.Streams[protocol][targetID.ID]; ok {
+		log.Debug("Stream ya existe para: ", targetID.ID, " Protocolo: ", protocol)
+		return s, nil
+	}
+
+	log.Debug("Abriendo Stream para: ", targetID.ID, " Protocolo: ", protocol)
+	s, err := n.Host.NewStream(context.Background(), targetID.ID, global.ProtocolAPIProxy)
+	if err != nil {
+		return nil, err
+	}
+
+	n.Streams[protocol][targetID.ID] = s
+	return s, nil
+}*/
+
+func (n *Network) getStream(proto string, service string) (network.Stream, error) {
+	n.MutexStreams.Lock()
+	defer n.MutexStreams.Unlock()
+
+	if sess, ok := n.Streams[proto][service]; ok {
+		if !sess.timer.Stop() {
+			select {
+			case <-sess.timer.C:
+			default:
+			}
+		}
+		sess.timer.Reset(Timeout)
+		return sess.stream, nil
+	}
+
+	target := n.BuscarServicio(context.Background(), service)
+	if target == nil {
+		return nil, errors.New("Servicio no encontrado")
+	}
+
+	log.Debug("Abriendo Stream para: ", target.ID, " Protocolo: ", proto, " servicio: ", service)
+	s, err := n.Host.NewStream(context.Background(), target.ID, protocol.ID(proto))
+	if err != nil {
+		return nil, err
+	}
+
+	sess := StreamSession{
+		stream: s,
+		timer:  time.NewTimer(Timeout),
+	}
+
+	go func(service string, st network.Stream, t *time.Timer) {
+		<-t.C
+		n.MutexStreams.Lock()
+		log.Printf("⏳ Timeout: Cerrando stream inactivo con %s", service)
+		st.Close()
+		delete(n.Streams[proto], service)
+		n.MutexStreams.Unlock()
+	}(service, s, sess.timer)
+
+	n.Streams[proto][service] = sess
+	return s, nil
 }
 
 func (n *Network) MonitorConnections(priv crypto.PrivKey) {

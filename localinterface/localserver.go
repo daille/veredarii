@@ -24,7 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -87,13 +86,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 					return
 				}
 
-				targetID := connection.NM.Networks[network.Name].BuscarServicio(context.Background(), service.Name)
-				if targetID == nil {
-					log.Error("Servicio no encontrado")
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-				respuesta := connection.NM.Networks[network.Name].Conversar(*targetID, service.Name, requestDump)
+				respuesta := connection.NM.Networks[network.Name].Conversar(service.Name, requestDump)
 				w.Write(respuesta)
 			})
 		}

@@ -44,6 +44,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 )
 
@@ -162,7 +163,7 @@ func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID p
 		log.Fatal("Error al sellar el sobre:", err)
 	}
 
-	sAuth, err := n.Host.NewStream(ctx, peerID, global.ProtocolAuth)
+	sAuth, err := n.Host.NewStream(ctx, peerID, protocol.ID(global.ProtocolAuth))
 	if err != nil {
 		log.Fatal("No se pudo abrir el stream de autenticación:", err)
 	}

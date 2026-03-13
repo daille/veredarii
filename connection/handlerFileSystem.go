@@ -43,6 +43,7 @@ import (
 	_ "bazil.org/fuse/fs/fstestutil"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
 func (n *Network) handleFileFetch(s network.Stream) {
@@ -105,7 +106,7 @@ func (n *Network) handleFileStat(s network.Stream) {
 }
 
 func (n *Network) GetRemoteStat(dest peer.ID, path string) (int64, error) {
-	s, err := n.Host.NewStream(context.Background(), dest, global.ProtocolFileSystemStat)
+	s, err := n.Host.NewStream(context.Background(), dest, protocol.ID(global.ProtocolFileSystemStat))
 	if err != nil {
 		log.Error("Error al abrir stream: ", err)
 		return 0, err
@@ -123,7 +124,7 @@ func (n *Network) GetRemoteStat(dest peer.ID, path string) (int64, error) {
 
 func (n *Network) RequestFile(dest peer.ID, remotePath string, localDest string) ([]byte, error) {
 	log.Debug("Abrir stream con el protocolo")
-	s, err := n.Host.NewStream(context.Background(), dest, global.ProtocolFileSystem)
+	s, err := n.Host.NewStream(context.Background(), dest, protocol.ID(global.ProtocolFileSystem))
 	if err != nil {
 		log.Error("Error al abrir stream: ", err)
 		return nil, err

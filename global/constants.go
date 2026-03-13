@@ -24,11 +24,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 const (
-	Version                = "0.1.0"
-	ProtocolJoin           = "/join/1.0.0"
-	ProtocolAuth           = "/auth/1.0.0"
-	ProtocolAPIProxy       = "/api-proxy/1.0.0"
-	ProtocolFileSystem     = "/file-system/1.0.0"
-	ProtocolFileSystemStat = "/file-system/stat/1.0.0"
-	ProtocolQuery          = "/query/1.0.0"
+	Version                string = "0.1.0"
+	ProtocolJoin           string = "/join/1.0.0"
+	ProtocolAuth           string = "/auth/1.0.0"
+	ProtocolAPIProxy       string = "/api-proxy/1.0.0"
+	ProtocolFileSystem     string = "/file-system/1.0.0"
+	ProtocolFileSystemStat string = "/file-system/stat/1.0.0"
+	ProtocolQuery          string = "/query/1.0.0"
 )

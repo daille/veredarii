@@ -26,7 +26,6 @@ SOFTWARE.
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -134,27 +133,8 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	}
 }
 
-func (n *Network) getOrCreateStream(protocol string, targetID peer.AddrInfo) (network.Stream, error) {
-	n.MutexStreams.Lock()
-	defer n.MutexStreams.Unlock()
-
-	if s, ok := n.Streams[protocol][targetID.ID]; ok {
-		log.Debug("Stream ya existe para: ", targetID.ID, " Protocolo: ", protocol)
-		return s, nil
-	}
-
-	log.Debug("Abriendo Stream para: ", targetID.ID, " Protocolo: ", protocol)
-	s, err := n.Host.NewStream(context.Background(), targetID.ID, global.ProtocolAPIProxy)
-	if err != nil {
-		return nil, err
-	}
-
-	n.Streams[protocol][targetID.ID] = s
-	return s, nil
-}
-
-func (n *Network) Conversar(targetID peer.AddrInfo, service string, payload []byte) []byte {
-	s, err := n.getOrCreateStream(global.ProtocolAPIProxy, targetID)
+func (n *Network) Conversar(service string, payload []byte) []byte {
+	s, err := n.getStream(global.ProtocolAPIProxy, service)
 	if err != nil {
 		log.Printf("Error obteniendo stream: %v", err)
 		return nil
@@ -168,12 +148,10 @@ func (n *Network) Conversar(targetID peer.AddrInfo, service string, payload []by
 
 	data, _ := proto.Marshal(msg)
 
-	// IMPORTANTE: No uses defer s.Close() aquí si quieres reutilizarlo.
 	_, err = writeDelimited(s, data)
 	if err != nil {
-		// Si falla la escritura, el stream probablemente murió. Limpiamos la caché.
 		n.MutexStreams.Lock()
-		delete(n.Streams[global.ProtocolAPIProxy], targetID.ID)
+		delete(n.Streams[global.ProtocolAPIProxy], service)
 		n.MutexStreams.Unlock()
 		s.Reset()
 		return nil
@@ -188,33 +166,6 @@ func (n *Network) Conversar(targetID peer.AddrInfo, service string, payload []by
 
 	return nil
 }
-
-/*func (n *Network) Conversar(targetID peer.AddrInfo, service string, payload []byte) []byte {
-	s, err := n.Host.NewStream(context.Background(), targetID.ID, global.ProtocolAPIProxy)
-	if err != nil {
-		log.Printf("Error abriendo stream: %v", err)
-		return nil
-	}
-	defer s.Close()
-
-	msg := &global.Envelop{
-		Id:      uuid.New().String(),
-		Service: service,
-		Payload: payload,
-	}
-	data, _ := proto.Marshal(msg)
-	writeDelimited(s, data)
-
-	resData, err := readDelimited(s)
-	if err == nil {
-		res := &global.Envelop{}
-		proto.Unmarshal(resData, res)
-		fmt.Printf("🔄 Respuesta del nodo: %s\n", res.Payload)
-		return res.Payload
-	}
-
-	return nil
-}*/
 
 func writeDelimited(w io.Writer, data []byte) (int, error) {
 	buf := make([]byte, binary.MaxVarintLen64)
