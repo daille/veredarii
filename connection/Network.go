@@ -84,6 +84,8 @@ type Network struct {
 	PS                 *pubsub.PubSub
 	PK                 crypto.PrivKey
 	PSK                pnet.PSK
+	Streams            map[string]map[peer.ID]network.Stream
+	MutexStreams       sync.Mutex
 }
 
 type PeerType struct {
@@ -93,6 +95,12 @@ type PeerType struct {
 }
 
 func NewNetwork(name string, port string, swarmKey string, pivots []string, address []string, externalAddress string, topics []global.TopicType, entities []global.KVType, resources global.ResourcesType, remoteResources global.ResourcesType) *Network {
+
+	s := make(map[string]map[peer.ID]network.Stream)
+	s[global.ProtocolAPIProxy] = make(map[peer.ID]network.Stream)
+	s[global.ProtocolFileSystem] = make(map[peer.ID]network.Stream)
+	s[global.ProtocolFileSystemStat] = make(map[peer.ID]network.Stream)
+
 	N := Network{
 		Name:            name,
 		Port:            port,
@@ -112,6 +120,8 @@ func NewNetwork(name string, port string, swarmKey string, pivots []string, addr
 		RateLimiter:     &RateManager{entidadLimits: make(map[string]map[string]*rate.Limiter)},
 		DataStore:       &crdt.Datastore{},
 		PebbleStore:     &dspebble.Datastore{},
+		Streams:         s,
+		MutexStreams:    sync.Mutex{},
 	}
 
 	return &N

@@ -25,14 +25,10 @@ SOFTWARE.
 */
 import (
 	"Veredarii/configuration"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
-	"os"
-	"strconv"
 
-	"github.com/casbin/casbin/v2"
-	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/spf13/cobra"
 )
 
@@ -40,16 +36,71 @@ import (
 var name string
 var newName string
 
-// 2. Comando Padre: entity
 var entityCmd = &cobra.Command{
 	Use:   "entity",
 	Short: "Operaciones de entidad",
-	// No definimos Run aquí para obligar a usar un subcomando
 }
 
-// 3. Subcomando: create
-var createEntityCmd = &cobra.Command{
-	Use:   "create",
+var entityLsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "Lista las entidades",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network")
+			return
+		}
+
+		configuration.CM = configuration.NewConfigurationManager()
+		err := configuration.CM.LoadConfig()
+		if err != nil {
+			fmt.Println("Error cargando configuracion:", "error", err.Error())
+			return
+		}
+		results := [][]string{}
+
+		for _, n := range configuration.CM.Config.Networks {
+			if n.Name == network {
+
+				for i, e := range n.Entities {
+					results = append(results, []string{
+						fmt.Sprintf("%d", i),
+						e.Name,
+						e.Key,
+					})
+				}
+				break
+			}
+		}
+
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(teal)).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				switch {
+				case row == table.HeaderRow:
+					return headerStyle
+				case row%2 == 0:
+					return evenRowStyle
+				default:
+					return oddRowStyle
+				}
+			}).
+			Headers("", "Entidad", "Public key").
+			Rows(results...)
+
+		fmt.Println("Entidades de la red ", network)
+		if len(results) > 0 {
+			fmt.Println(t.String())
+		} else {
+			fmt.Println("No existen entidades")
+		}
+
+	},
+}
+
+/*
+var newEntityCmd = &cobra.Command{
+	Use:   "new",
 	Short: "Crea una nueva entidad",
 	Run: func(cmd *cobra.Command, args []string) {
 		if name == "" {
@@ -115,54 +166,12 @@ m = r.sub == p.sub && r.dom == p.dom && r.obj == p.obj && r.act == p.act`), 0600
 
 		fmt.Printf("🚀 Entidad '%s' creada con éxito.\n", name)
 	},
-}
-
-// 4. Subcomando: newkey
-var newKeyCmd = &cobra.Command{
-	Use:   "newkey",
-	Short: "Genera una nueva llave",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("🔑 Generando nueva llave para: %s\n", name)
-
-		entidad := "Nuevo"
-		dom := "red_interoperabilidad"
-		obj := "/api-proxy/1.0.0"
-		act := "hola"
-		rb, err := casbin.NewEnforcer("./model.conf", "./policy.csv")
-		if err != nil {
-			fmt.Println("Error al crear el enforcer: ", err)
-			return
-		}
-		ok, rule, err := rb.EnforceEx(entidad, dom, obj, act)
-		if !ok {
-			fmt.Println("No se encontró la política: ", ok)
-			fmt.Println(entidad, dom, obj, act)
-		} else if err != nil {
-			fmt.Println("Error al obtener la lista de políticas: ", err)
-		}
-
-		tps, _ := strconv.ParseInt(rule[4], 10, 64)
-		fmt.Printf("TPS: %d %s %s %s %s", tps, entidad, obj, dom, act)
-
-	},
-}
-
-// 5. Subcomando: newname
-var newNameCmd = &cobra.Command{
-	Use:   "newname",
-	Short: "Cambia el nombre de la entidad",
-	Run: func(cmd *cobra.Command, args []string) {
-		if name == "" || newName == "" {
-			fmt.Println("❌ Error: Se requieren las flags --name y --newname")
-			return
-		}
-		fmt.Printf("📝 Renombrando %s a %s\n", name, newName)
-	},
-}
+}*/
 
 func init() {
-	entityCmd.PersistentFlags().StringVarP(&name, "name", "n", "", "Nombre de la entidad (requerido)")
-	newNameCmd.Flags().StringVarP(&newName, "newname", "m", "", "Nuevo nombre de la entidad")
-	entityCmd.AddCommand(createEntityCmd, newKeyCmd, newNameCmd)
+	//newEntityCmd.PersistentFlags().StringVarP(&name, "entity", "e", "", "Nombre de la entidad (requerido)")
+	entityLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+
+	entityCmd.AddCommand(entityLsCmd)
 	rootCmd.AddCommand(entityCmd)
 }

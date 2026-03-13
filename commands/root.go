@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +38,8 @@ var rootCmd = &cobra.Command{
 	Short: "Veredarii de interoperabilidad PISEE 2",
 	Long:  `Veredarii de Interoperabilidad de PISEE 2`,
 }
+
+const separator = "|"
 
 var network string
 var entity string
@@ -48,6 +51,18 @@ var key string
 var resourceType string
 var resource string
 var local string
+
+var (
+	teal      = lipgloss.Color("39")
+	purple    = lipgloss.Color("99")
+	gray      = lipgloss.Color("245")
+	lightGray = lipgloss.Color("241")
+
+	headerStyle  = lipgloss.NewStyle().Foreground(teal).Bold(true).Align(lipgloss.Center)
+	cellStyle    = lipgloss.NewStyle().Padding(0, 1)
+	oddRowStyle  = cellStyle.Foreground(gray)
+	evenRowStyle = cellStyle.Foreground(lightGray)
+)
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {

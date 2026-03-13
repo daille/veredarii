@@ -24,15 +24,56 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/configuration"
+	"fmt"
+	"strconv"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/spf13/cobra"
 )
 
-// 2. Comando Padre: entity
-var networkCmd = &cobra.Command{
-	Use:   "network",
-	Short: "Operaciones de red",
+var lsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "Lista las redes",
+	Long:  `Lista los redes`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configuration.CM = configuration.NewConfigurationManager()
+		err := configuration.CM.LoadConfig()
+		if err != nil {
+			fmt.Println("Error cargando configuracion:", "error", err.Error())
+			return
+		}
+		resultado := [][]string{}
+		for i, n := range configuration.CM.Config.Networks {
+			resultado = append(resultado, []string{strconv.Itoa(i), n.Name})
+		}
+
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(teal)).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				switch {
+				case row == table.HeaderRow:
+					return headerStyle
+				case row%2 == 0:
+					return evenRowStyle
+				default:
+					return oddRowStyle
+				}
+			}).
+			Headers("", "Nombre").
+			Rows(resultado...)
+
+		if len(resultado) > 0 {
+			fmt.Println(t.String())
+		} else {
+			fmt.Println("No existen redes")
+		}
+
+	},
 }
 
 func init() {
-	rootCmd.AddCommand(networkCmd)
+	rootCmd.AddCommand(lsCmd)
 }

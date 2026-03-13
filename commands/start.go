@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	"Veredarii/configuration"
 	"Veredarii/connection"
+	"Veredarii/global"
 	"Veredarii/localdatabase"
 	"Veredarii/localinterface"
 	pluginmanager "Veredarii/pluginManager"
@@ -53,8 +54,6 @@ to quickly create a Cobra application.`,
 	},
 }
 
-const Version = "0.1.0"
-
 func init() {
 	rootCmd.AddCommand(startCmd)
 }
@@ -64,7 +63,7 @@ func IniciaVeredarii() {
 	fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
 	fmt.Printf("│%s%-29s│\n", "                                Veredarii  ", "")
 	fmt.Println("│                                                                        │")
-	fmt.Printf("│ Versión: %-62s│\n", Version)
+	fmt.Printf("│ Versión: %-62s│\n", global.Version)
 	fmt.Print("╰────────────────────────────────────────────────────────────────────────╯\n\n")
 
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{

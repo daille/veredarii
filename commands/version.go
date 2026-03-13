@@ -1,9 +1,9 @@
-package global
+package cmd
 
 /*
 MIT License
 
-# Copyright (c) 2026 Juan Carlos Daille
+Copyright (c) 2026 Juan Carlos Daille
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,12 +23,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-const (
-	Version                = "0.1.0"
-	ProtocolJoin           = "/join/1.0.0"
-	ProtocolAuth           = "/auth/1.0.0"
-	ProtocolAPIProxy       = "/api-proxy/1.0.0"
-	ProtocolFileSystem     = "/file-system/1.0.0"
-	ProtocolFileSystemStat = "/file-system/stat/1.0.0"
-	ProtocolQuery          = "/query/1.0.0"
+import (
+	"Veredarii/global"
+	"fmt"
+
+	"github.com/spf13/cobra"
 )
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Muestra la versión de Veredarii",
+	Long:  `Muestra la versión de Veredarii`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("Versión: %s\n", global.Version)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(versionCmd)
+}
