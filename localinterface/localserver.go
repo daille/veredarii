@@ -29,7 +29,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -57,7 +56,6 @@ func Start() {
 	_ = LocalServer.setupRouter()
 
 	go func() {
-
 		server := &http.Server{
 			Addr:    ":" + configuration.CM.GetConfig().LocalInterface.Server.Port,
 			Handler: LocalServer.Router,
@@ -66,9 +64,7 @@ func Start() {
 			log.Printf("Error server HTTP: %v", err)
 		}
 	}()
-
-	fmt.Println("Esperando señales o peticiones API...")
-
+	log.Info("Esperando peticiones de API en el puerto ", configuration.CM.GetConfig().LocalInterface.Server.Port)
 }
 
 func (n *LocalServer) setupRouter() (iplocal string) {
@@ -86,7 +82,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 					return
 				}
 
-				respuesta := connection.NM.Networks[network.Name].Conversar(service.Name, requestDump)
+				respuesta := connection.NM.Networks[network.Name].Send(service.Name, requestDump)
 				w.Write(respuesta)
 			})
 		}

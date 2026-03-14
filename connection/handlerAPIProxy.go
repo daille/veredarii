@@ -133,7 +133,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	}
 }
 
-func (n *Network) Conversar(service string, payload []byte) []byte {
+func (n *Network) Send(service string, payload []byte) []byte {
 	s, err := n.getStream(global.ProtocolAPIProxy, service)
 	if err != nil {
 		log.Printf("Error obteniendo stream: %v", err)
