@@ -34,6 +34,7 @@ type ResourcesType struct {
 type ResourceType struct {
 	Name         string `json:"name"`
 	ResourcePath string `json:"resource_path"`
+	Plugin       string `json:"plugin"`
 }
 
 type InvitacionType struct {

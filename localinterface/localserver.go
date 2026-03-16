@@ -29,6 +29,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -39,6 +40,7 @@ import (
 
 	configuration "Veredarii/configuration"
 	"Veredarii/connection"
+	pluginmanager "Veredarii/pluginManager"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -75,15 +77,27 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 		// Rutas a tratar como proxy
 		for _, service := range network.RemoteResources.API {
 			r.Get("/"+network.Name+"/"+service.ResourcePath, func(w http.ResponseWriter, r *http.Request) {
+				if service.Plugin == "" {
+					requestDump, err := httputil.DumpRequest(r, true)
+					if err != nil {
+						http.Error(w, "Error capturando petición", 500)
+						return
+					}
 
-				requestDump, err := httputil.DumpRequest(r, true)
-				if err != nil {
-					http.Error(w, "Error capturando petición", 500)
-					return
+					respuesta := connection.NM.Networks[network.Name].Send(service.Name, requestDump)
+					w.Write(respuesta)
+				} else {
+					body, _ := io.ReadAll(r.Body)
+
+					resultado, err := pluginmanager.PM.Execute(r.Context(), service.Plugin, body)
+					if err != nil {
+						http.Error(w, err.Error(), 500)
+						return
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					w.Write(resultado)
 				}
-
-				respuesta := connection.NM.Networks[network.Name].Send(service.Name, requestDump)
-				w.Write(respuesta)
 			})
 		}
 

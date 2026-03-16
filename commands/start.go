@@ -35,6 +35,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -95,8 +96,17 @@ func IniciaVeredarii() {
 	go connection.NM.StartProcess()
 
 	ctx := context.Background()
-	plugManager, _ := pluginmanager.NewPluginManager(ctx)
-	plugManager.StartWatcher("./plugins")
+	pluginmanager.PM = pluginmanager.NewPluginManager(ctx, nil)
+	defer pluginmanager.PM.Close()
+	entries, err := os.ReadDir("./plugins")
+	if err != nil {
+		slog.Error("Error al leer el directorio de plugins", "error", err.Error())
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".wasm" {
+			pluginmanager.PM.LoadPlugin("plugins/"+entry.Name(), 5)
+		}
+	}
 
 	connection.NM.ChannelNetworks <- "init"
 
