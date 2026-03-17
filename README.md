@@ -26,7 +26,7 @@ Es la unión de esas piezas la que va construyendo el edificio de su propia red,
 
 ###  ¿Cómo crear una red con Veredarii?
 
-1.- Instale Veredarii en una entidad, use los comandos para crear una red y para crear una entidad. 
+1.- Instale Veredarii en una entidad, use los comandos para crear una red y para crear una entidad. ([como instalar](documentation/instalacion.md))
 
 2.- Luego use el comando para crear invitaciones y envíe esas invitaciones a otras entidades.
 
