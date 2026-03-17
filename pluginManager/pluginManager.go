@@ -2,6 +2,7 @@ package pluginmanager
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -13,7 +14,14 @@ import (
 
 var PM *PluginManager
 
-// pluginPool mantiene un CompiledPlugin + un channel de instancias listas
+type PluginMessageType struct {
+	Action     string
+	Parameters map[string]string
+	Status     string
+	Payload    []byte
+	Error      string
+}
+
 type pluginPool struct {
 	compiled *extism.CompiledPlugin
 	pool     chan *extism.Plugin
@@ -42,20 +50,27 @@ func (pm *PluginManager) LoadPlugin(path string, poolSize int) {
 	}
 	config := extism.PluginConfig{EnableWasi: true}
 
-	// Compilar una sola vez
 	compiled, err := extism.NewCompiledPlugin(pm.ctx, manifest, config, pm.hostFunctions)
 	if err != nil {
 		log.Printf("❌ Error compilando plugin %s: %v", name, err)
 		return
 	}
 
-	// Pre-crear `poolSize` instancias en el channel
 	ch := make(chan *extism.Plugin, poolSize)
 	for i := 0; i < poolSize; i++ {
 		inst, err := compiled.Instance(pm.ctx, extism.PluginInstanceConfig{})
 		if err != nil {
 			log.Printf("❌ Error creando instancia %d de %s: %v", i, name, err)
 			continue
+		}
+
+		if i == 0 {
+			_, out, err := inst.Call("metadata", nil)
+			if err == nil {
+				var meta map[string]any
+				json.Unmarshal(out, &meta)
+				fmt.Printf("✅ Plugin cargado: %v\n", meta)
+			}
 		}
 		ch <- inst
 	}
@@ -76,9 +91,8 @@ func (pm *PluginManager) Execute(ctx context.Context, pluginName string, data []
 		return nil, fmt.Errorf("plugin '%s' no encontrado", pluginName)
 	}
 
-	// Obtener instancia del pool (bloquea si todas están ocupadas)
 	inst := <-p.pool
-	defer func() { p.pool <- inst }() // Devolver al pool siempre
+	defer func() { p.pool <- inst }()
 
 	_, out, err := inst.Call("handle_request", data)
 	if err != nil {
@@ -88,7 +102,6 @@ func (pm *PluginManager) Execute(ctx context.Context, pluginName string, data []
 	return out, nil
 }
 
-// Close libera todos los recursos
 func (pm *PluginManager) Close() {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()

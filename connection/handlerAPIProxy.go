@@ -26,15 +26,20 @@ SOFTWARE.
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"Veredarii/configuration"
 	global "Veredarii/global"
+	pluginmanager "Veredarii/pluginManager"
 
 	"github.com/google/uuid"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -96,38 +101,70 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 		}
 		fmt.Printf("📩 Recibido de %s: %s\n", s.Conn().RemotePeer().String()[:6], req.URL.String())
 
-		nuevoHost := "localhost:3000"
-		nuevaRuta := "/echo"
-		urlDestino := fmt.Sprintf("http://%s%s?%s", nuevoHost, nuevaRuta, req.URL.RawQuery)
-		proxyReq, err := http.NewRequest(req.Method, urlDestino, req.Body)
-		if err != nil {
-			log.Printf("Error creando nuevo request: %v", err)
-			return
-		}
-		proxyReq.Header = req.Header
-		proxyReq.Host = nuevoHost
+		founded := false
+		for _, net := range configuration.CM.Config.Networks {
+			if net.Name == n.Name {
+				for _, service := range n.Resources.API {
+					if service.Name == msg.Service {
+						founded = true
+						var bodyBytes []byte
 
-		client := &http.Client{}
-		resp, err := client.Do(proxyReq)
-		if err != nil {
-			log.Printf("Error replicando el llamado: %v", err)
-			return
-		}
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Error leyendo el cuerpo de la respuesta: %v", err)
-			return
-		}
-		defer resp.Body.Close()
+						if service.Plugin == "" {
+							log.Debug("Procesando API sin plugin: ", service.Name)
+							urlDestino := fmt.Sprintf("%s?%s", service.ResourcePath, req.URL.RawQuery)
+							u, err := url.Parse(urlDestino)
+							if err != nil {
+								log.Error("Error parseando url: ", err)
+								return
+							}
 
-		response := &global.Envelop{
-			Id:      uuid.New().String(),
-			Payload: bodyBytes,
-		}
+							proxyReq, err := http.NewRequest(req.Method, urlDestino, req.Body)
+							if err != nil {
+								log.Error("Error creando nuevo request:", err)
+								return
+							}
+							proxyReq.Header = req.Header
+							proxyReq.Host = u.Host
 
-		resData, _ := proto.Marshal(response)
-		if _, err := writeDelimited(s, resData); err != nil {
-			log.Printf("Error respondiendo: %v", err)
+							client := &http.Client{}
+							resp, err := client.Do(proxyReq)
+							if err != nil {
+								log.Printf("Error replicando el llamado: %v", err)
+								return
+							}
+							bodyBytes, err = io.ReadAll(resp.Body)
+							if err != nil {
+								log.Printf("Error leyendo el cuerpo de la respuesta: %v", err)
+								return
+							}
+							resp.Body.Close()
+						} else {
+							log.Debug("Procesando API con plugin: ", service.Name)
+							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer cancel()
+							bodyBytes, err = pluginmanager.PM.Execute(ctx, service.Plugin, msg.Payload)
+							if err != nil {
+								log.Error("Error ejecutando plugin: ", err.Error())
+							}
+						}
+
+						response := &global.Envelop{
+							Id:      uuid.New().String(),
+							Payload: bodyBytes,
+						}
+
+						resData, _ := proto.Marshal(response)
+						if _, err := writeDelimited(s, resData); err != nil {
+							log.Printf("Error respondiendo: %v", err)
+							return
+						}
+					}
+				}
+			}
+		}
+		if !founded {
+			log.Error("No se encontro la red: ", n.Name)
+			s.Reset()
 			return
 		}
 	}
