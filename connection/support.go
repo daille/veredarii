@@ -31,13 +31,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/record"
 	log "github.com/sirupsen/logrus"
 )
 
-// --- FUNCIONES DE SOPORTE ---
 func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
 	var length uint32
 	if err := binary.Read(rw.Reader, binary.BigEndian, &length); err != nil {
@@ -47,43 +47,39 @@ func recibirSobre(rw *bufio.ReadWriter) (*record.Envelope, error) {
 	if _, err := io.ReadFull(rw.Reader, buf); err != nil {
 		return nil, fmt.Errorf("error leyendo bytes: %w", err)
 	}
-
 	envelope, err := record.UnmarshalEnvelope(buf)
 	if err != nil {
 		return nil, fmt.Errorf("error al deserializar sobre (wire-format): %w", err)
 	}
-
 	return envelope, nil
 }
 
 func (n *Network) LoadConfig() {
 	var err error
-
 	record.RegisterType(&EntidadRecord{})
 	for _, entity := range n.Entities {
-		log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", entity.Name, entity.Key))
+		slog.Debug("Cargando entidad", "entidad", entity.Name, "key", entity.Key)
 		pubKeyRaw, err := hex.DecodeString(entity.Key)
 		if err != nil {
-			log.Fatalf("Error al decodificar hexadecimal: %v", err)
+			slog.Error("Error al decodificar hexadecimal", "error", err)
 		}
 		pkb, err := crypto.UnmarshalPublicKey(pubKeyRaw)
 		if err != nil {
-			log.Fatalf("Error al procesar llave pública: %v", err)
+			slog.Error("Error al procesar llave pública", "error", err)
 		}
 		n.MasterEntities[entity.Name] = pkb
 	}
 
 	priv, err := global.ObtenerIdentidad(configuration.CM.GetConfig().Identity.PrivKeyFile)
 	if err != nil {
-		log.Fatal("Error con la identidad:", err)
+		log.Error("Error con la identidad", "error", err)
 	}
 
 	keyStr := n.SwarmKey
 	psk, err := global.DecodeV1PSK(keyStr)
 	if err != nil {
-		log.Fatal("Error cargando PSK:", err)
+		log.Error("Error cargando PSK", "error", err)
 	}
-
 	n.PSK = psk
 	n.PK = priv
 }

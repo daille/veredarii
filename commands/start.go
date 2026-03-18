@@ -60,21 +60,13 @@ func init() {
 }
 
 func IniciaVeredarii() {
+	slog := slog.With(slog.String("comando", "start"))
 
 	fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
 	fmt.Printf("│%s%-29s│\n", "                                Veredarii  ", "")
 	fmt.Println("│                                                                        │")
 	fmt.Printf("│ Versión: %-62s│\n", global.Version)
 	fmt.Print("╰────────────────────────────────────────────────────────────────────────╯\n\n")
-
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
-	slog := slog.With(
-		slog.String("comando", "start"),
-	)
 
 	_, err := localdatabase.NewDatabase("./veredarii_data")
 	if err != nil {
@@ -87,7 +79,10 @@ func IniciaVeredarii() {
 	err = configuration.CM.LoadConfig()
 	if err != nil {
 		slog.Error("Error cargando configuracion:", "error", err.Error())
+		os.Exit(1)
+		return
 	}
+
 	connection.NM = connection.NewNetworkManager()
 	for _, network := range configuration.CM.GetConfig().Networks {
 		slog.Info("Agregando red", "red", network.Name)
@@ -101,18 +96,17 @@ func IniciaVeredarii() {
 	entries, err := os.ReadDir("./plugins")
 	if err != nil {
 		slog.Error("Error al leer el directorio de plugins", "error", err.Error())
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".wasm" {
-			pluginmanager.PM.LoadPlugin("plugins/"+entry.Name(), 5)
+	} else {
+		for _, entry := range entries {
+			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".wasm" {
+				pluginmanager.PM.LoadPlugin("plugins/"+entry.Name(), 5)
+			}
 		}
 	}
-
 	connection.NM.ChannelNetworks <- "init"
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	time.Sleep(3 * time.Second)
 	go localinterface.Start()
 

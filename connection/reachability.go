@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/libp2p/go-libp2p/core/event"
@@ -32,11 +32,9 @@ import (
 )
 
 func (n *Network) GetReachability() network.Reachability {
-	// Analizamos las direcciones actuales del host
 	hasPublicIP := false
 	for _, addr := range n.Host.Addrs() {
 		addrStr := addr.String()
-		// Si tiene una IP que no es privada ni loopback ni relay
 		if !strings.Contains(addrStr, "127.0.0.1") &&
 			!strings.Contains(addrStr, "192.168.") &&
 			!strings.Contains(addrStr, "10.") &&
@@ -45,16 +43,13 @@ func (n *Network) GetReachability() network.Reachability {
 			break
 		}
 	}
-
 	if hasPublicIP {
 		return network.ReachabilityPublic
 	}
 	return network.ReachabilityPrivate
 }
 
-// Helper simple para filtrar IPs
 func isExternalAddr(addr string) bool {
-	// Si contiene p2p-circuit (Relay) o IPs privadas, no es "puro" público
 	isLocal := strings.Contains(addr, "127.0.0.1") ||
 		strings.Contains(addr, "192.168.") ||
 		strings.Contains(addr, "10.") ||
@@ -63,20 +58,15 @@ func isExternalAddr(addr string) bool {
 }
 
 func (n *Network) Reachability() {
-	fmt.Println("reachability")
 	status := n.GetReachability()
 
 	switch status {
 	case network.ReachabilityPublic:
-		fmt.Println("🚀 Conectividad Óptima: Los peers pueden entrar directo.")
-		// Aquí podrías, por ejemplo, aumentar el límite de conexiones del Connection Manager
-
+		slog.Debug("Conectividad Óptima: Los peers pueden entrar directo.")
 	case network.ReachabilityPrivate:
-		fmt.Println("🛡️ Conectividad Protegida: Dependemos del Pivote (Relay).")
-		// Aquí podrías avisar al usuario que la latencia será un poco mayor
-
+		slog.Debug("Conectividad Protegida: Dependemos del Pivote (Relay).")
 	default:
-		fmt.Println("⏳ Determinando estado de red...")
+		slog.Debug("Determinando estado de red.")
 	}
 
 	sub, _ := n.Host.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
@@ -84,7 +74,7 @@ func (n *Network) Reachability() {
 		for e := range sub.Out() {
 			evt := e.(event.EvtLocalReachabilityChanged)
 			if evt.Reachability == network.ReachabilityPublic {
-				fmt.Println("🚀 ¡Evento: Ahora soy alcanzable desde el exterior!")
+				slog.Debug("Ahora soy alcanzable desde el exterior.")
 			}
 		}
 	}()

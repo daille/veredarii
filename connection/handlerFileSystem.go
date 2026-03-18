@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -44,6 +44,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	log "github.com/sirupsen/logrus"
 )
 
 func (n *Network) handleFileFetch(s network.Stream) {
@@ -66,27 +67,24 @@ func (n *Network) handleFileFetch(s network.Stream) {
 			defer file.Close()
 
 			s.Write([]byte("OK\n"))
-
 			written, err := io.Copy(s, file)
 			if err != nil {
-				fmt.Printf("Error durante el envío: %v\n", err)
+				slog.Error("Error durante el envío", "error", err)
 				return
 			}
-
-			fmt.Printf("📤 Archivo '%s' enviado correctamente (%d bytes)\n", filePath, written)
+			slog.Info("Archivo enviado correctamente", "archivo", filePath, "bytes", written)
 			return
 		}
 	}
 	s.Write([]byte("-1\n"))
-
 }
 
 func (n *Network) handleFileStat(s network.Stream) {
 	defer s.Close()
-
 	reader := bufio.NewReader(s)
 	filePath, err := reader.ReadString('\n')
 	if err != nil {
+		slog.Error("Error al leer el path del archivo", "error", err)
 		return
 	}
 	filePath = strings.TrimSpace(filePath)
@@ -95,6 +93,7 @@ func (n *Network) handleFileStat(s network.Stream) {
 		if resource.Name == filePath {
 			fileInfo, err := os.Stat(resource.ResourcePath)
 			if err != nil {
+				slog.Error("Error al obtener el stat del archivo", "error", err)
 				s.Write([]byte("-1\n"))
 				return
 			}
@@ -108,25 +107,23 @@ func (n *Network) handleFileStat(s network.Stream) {
 func (n *Network) GetRemoteStat(dest peer.ID, path string) (int64, error) {
 	s, err := n.Host.NewStream(context.Background(), dest, protocol.ID(global.ProtocolFileSystemStat))
 	if err != nil {
-		log.Error("Error al abrir stream: ", err)
+		slog.Error("Error al abrir stream", "error", err)
 		return 0, err
 	}
 	defer s.Close()
 
 	s.Write([]byte(path + "\n"))
-
 	reader := bufio.NewReader(s)
 	line, _ := reader.ReadString('\n')
 	size, _ := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
-
 	return size, nil
 }
 
 func (n *Network) RequestFile(dest peer.ID, remotePath string, localDest string) ([]byte, error) {
-	log.Debug("Abrir stream con el protocolo")
+	slog.Debug("Abrir stream con el protocolo")
 	s, err := n.Host.NewStream(context.Background(), dest, protocol.ID(global.ProtocolFileSystem))
 	if err != nil {
-		log.Error("Error al abrir stream: ", err)
+		slog.Error("Error al abrir stream", "error", err)
 		return nil, err
 	}
 	defer s.Close()
@@ -135,33 +132,26 @@ func (n *Network) RequestFile(dest peer.ID, remotePath string, localDest string)
 	reader := bufio.NewReader(s)
 	status, err := reader.ReadString('\n')
 	if err != nil || !strings.HasPrefix(status, "OK") {
-		log.Error("Error del servidor: ", status)
-		return nil, fmt.Errorf("error del servidor: %s", status)
+		return nil, fmt.Errorf("error del servidor: %s %s", status, err.Error())
 	}
 
 	var buf bytes.Buffer
-
-	fmt.Println("📥 Recibiendo datos...")
+	slog.Info("Recibiendo datos...")
 	nBytes, err := io.Copy(&buf, s)
 	if err != nil {
-		log.Error("Error al recibir el stream: ", err)
+		slog.Error("Error al recibir el stream", "error", err)
 		return nil, err
 	}
 
-	fmt.Printf("✅ Descarga completada: %d bytes guardados en %s\n", nBytes, localDest)
+	slog.Info("Descarga completada", "bytes", nBytes, "archivo", localDest)
 	return buf.Bytes(), nil
 }
 
 func (n *Network) FileSystem() {
-	log.Debug("init handleFileSystem")
+	slog.Debug("init handleFileSystem")
 	mountpoint := flag.String("mount", configuration.CM.GetConfig().Networks[0].FS, "punto de montaje")
 	flag.Parse()
-
-	c, err := fuse.Mount(*mountpoint,
-		fuse.FSName("MiP2P_VFS"),
-		fuse.Subtype("vfs"),
-	)
-
+	c, err := fuse.Mount(*mountpoint, fuse.FSName("MiP2P_VFS"), fuse.Subtype("vfs"))
 	if err != nil {
 		log.Error(err)
 		return
@@ -187,7 +177,7 @@ type Dir struct {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = os.ModeDir | 0555 // Solo lectura para este ejemplo
+	a.Mode = os.ModeDir | 0555
 	return nil
 }
 
@@ -203,20 +193,19 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	for _, resource := range d.N.RemoteResources.FILE {
 		if name == resource.Name {
-
 			targetID := d.N.BuscarServicio(context.Background(), resource.Name)
 			if targetID == nil {
-				log.Error("Servicio no encontrado")
+				slog.Error("Servicio no encontrado")
 				return nil, fuse.ENOENT
 			}
 
-			log.Debug("Buscando Stat del archivo: ", name)
+			slog.Debug("Buscando Stat del archivo", "archivo", name)
 			remoteSize, err := d.N.GetRemoteStat(targetID.ID, name)
 			if err != nil {
-				log.Error("Error al obtener el stat del archivo: ", err)
+				slog.Error("Error al obtener el stat del archivo", "error", err)
 				return nil, fuse.ENOENT
 			}
-			log.Debug("Stat del archivo: ", remoteSize)
+			slog.Debug("Stat del archivo", "size", remoteSize)
 			return &File{N: d.N, FileName: name, Size: uint64(remoteSize)}, nil
 		}
 	}
@@ -242,18 +231,17 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
-	log.Debug("Leyendo archivo...")
-	fmt.Printf("🚀 Iniciando descarga P2P para: %s...\n", f.FileName)
+	slog.Info("Iniciando descarga P2P ", "archivo", f.FileName)
 
 	targetID := f.N.BuscarServicio(context.Background(), f.FileName)
 	if targetID == nil {
-		log.Error("Servicio no encontrado")
+		slog.Error("Servicio no encontrado")
 		return nil, fuse.ENOENT
 	}
 	content, err := f.N.RequestFile(targetID.ID, f.FileName, f.FileName)
 	if err != nil {
+		slog.Error("Error al descargar el archivo", "error", err)
 		return nil, fuse.ENOENT
 	}
-
 	return content, nil
 }

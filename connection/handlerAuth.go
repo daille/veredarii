@@ -38,8 +38,9 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/oklog/ulid/v2"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -76,11 +77,11 @@ func (n *Network) handleAuthStream(s network.Stream) {
 	defer s.Close()
 	remotePeer := s.Conn().RemotePeer()
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-	fmt.Printf("[Validacion] Verificando sobre de: %s...", remotePeer)
+	slog.Debug("[Validacion] Verificando sobre", "peer", remotePeer)
 
 	envelope, err := recibirSobre(rw)
 	if err != nil {
-		fmt.Printf(" RECHAZADO: %v\n", err)
+		slog.Error("Error al recibir sobre", "error", err)
 		s.Write([]byte{0})
 		s.Reset()
 		return
@@ -88,14 +89,14 @@ func (n *Network) handleAuthStream(s network.Stream) {
 
 	envelopeBytes, err := envelope.Marshal()
 	if err != nil {
-		fmt.Println("Error serializando sobre:", err)
+		slog.Error("Error serializando sobre", "error", err)
 		s.Write([]byte{0})
 		s.Reset()
 		return
 	}
 
 	if rec, err := n.verificarEntidad(envelopeBytes, remotePeer); err != nil {
-		fmt.Printf(" RECHAZADO: %v\n", err)
+		slog.Info("Error verificando entidad", "error", err)
 		s.Write([]byte{0})
 		s.Reset()
 		return
@@ -106,7 +107,7 @@ func (n *Network) handleAuthStream(s network.Stream) {
 			Entity: rec.EntityName,
 		}
 		if err != nil {
-			fmt.Println("Error serializando sobre:", err)
+			slog.Error("Error serializando sobre", "error", err)
 		} else {
 			pr := PeerRequest{
 				PeerID:     remotePeer.String(),
@@ -115,14 +116,14 @@ func (n *Network) handleAuthStream(s network.Stream) {
 			}
 			peerRequest, err := json.Marshal(pr)
 			if err != nil {
-				fmt.Println("Error serializando sobre:", err)
+				slog.Error("Error serializando sobre", "error", err)
 				return
 			}
 			preKey := sha256.Sum256([]byte(n.SwarmKey))
 			key := preKey[:]
 			peerRequest, err = global.Encrypt(peerRequest, key)
 			if err != nil {
-				log.Error("❌ Error al cifrar la solicitud:", err)
+				slog.Error("Error al cifrar la solicitud", "error", err)
 				return
 			}
 			ctx := context.Background()
@@ -134,49 +135,36 @@ func (n *Network) handleAuthStream(s network.Stream) {
 	n.MutexSesiones.Lock()
 	n.SesionesActivas[remotePeer] = "usuario_verificado"
 	n.MutexSesiones.Unlock()
-
-	/*resp, err := SerializarMasterEntities(n.MasterEntities)
-	if err != nil {
-		fmt.Println("Error serializando master entities:", err)
-		s.Write([]byte{0})
-		s.Reset()
-		return
-	}
-	s.Write(resp)*/
-	fmt.Println(" ACEPTADO.")
+	slog.Info("ACEPTADO.")
 }
 
 func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID peer.ID) error {
-
 	rec, err := FirmarRecordConULID(
 		configuration.CM.GetConfig().Identity.Entity,
 		n.Host.ID(),
 		time.Hour,
 	)
 	if err != nil {
-		log.Fatal("Error firmando el record:", err)
+		slog.Error("Error firmando el record", "error", err)
 	}
 
-	// Sellar el sobre con la llave privada del cliente
 	envelope, err := record.Seal(rec, priv)
 	if err != nil {
-		log.Fatal("Error al sellar el sobre:", err)
+		slog.Error("Error al sellar el sobre", "error", err)
 	}
 
 	sAuth, err := n.Host.NewStream(ctx, peerID, protocol.ID(global.ProtocolAuth))
 	if err != nil {
-		log.Fatal("No se pudo abrir el stream de autenticación:", err)
+		slog.Error("No se pudo abrir el stream de autenticación", "error", err)
 	}
 	rw := bufio.NewReadWriter(bufio.NewReader(sAuth), bufio.NewWriter(sAuth))
 
-	// ENVIAR SOBRE INMEDIATAMENTE
-	fmt.Println("Enviando credenciales de entidad...")
+	slog.Debug("Enviando credenciales de entidad...")
 	envelopeBytes, err := envelope.Marshal()
 	if err != nil {
 		return err
 	}
 
-	// Prefijo de longitud para que el servidor sepa cuánto leer
 	length := uint32(len(envelopeBytes))
 	if err := binary.Write(rw.Writer, binary.BigEndian, length); err != nil {
 		return err
@@ -185,40 +173,33 @@ func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID p
 	if _, err := rw.Writer.Write(envelopeBytes); err != nil {
 		return err
 	}
-	log.Debug(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
-	fmt.Println("Autenticación enviada. Esperando validación...")
+	slog.Debug("Autenticación enviada. Esperando validación...", "id", rec.ID, "entity", rec.EntityName, "peer", rec.PeerID.String())
 	rw.Flush()
-
-	// Leer respuesta del servidor
 	resp, err := io.ReadAll(sAuth)
 	if err != nil {
-		log.Error(err)
+		slog.Error("Error al leer la respuesta", "error", err)
 	}
-	fmt.Println("✅ El servidor aceptó la autenticación", resp)
+	slog.Info("El servidor aceptó la autenticación", "respuesta", resp)
 	sAuth.Close()
-
 	return nil
 }
 
 func FirmarRecordConULID(name string, pID peer.ID, ttl time.Duration) (*EntidadRecord, error) {
-
 	privKey, err := obtenerMasterKey(configuration.CM.GetConfig().Identity.PrivKeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("no se pudo cargar la llave privada: %w", err)
 	}
 	id := ulid.Make().String()
 
-	// 3. Firmar usando la interfaz de libp2p
 	msgAuth := []byte(fmt.Sprintf("%s:%s:%s", id, name, pID.String()))
-	signature, err := privKey.Sign(msgAuth) // Esto devuelve []byte
+	signature, err := privKey.Sign(msgAuth)
 	pkb_auto := privKey.GetPublic()
 	valid, err := pkb_auto.Verify(msgAuth, signature)
 	if err != nil {
-		log.Error("Error al verificar firma: ", err)
+		slog.Error("Error al verificar firma", "error", err)
 		return nil, err
 	}
 	if !valid {
-		log.Error("Firma inválida")
 		return nil, fmt.Errorf("firma inválida")
 	}
 
@@ -226,8 +207,7 @@ func FirmarRecordConULID(name string, pID peer.ID, ttl time.Duration) (*EntidadR
 		ID:         id,
 		EntityName: name,
 		PeerID:     pID,
-		//ExpiresAt:  expiration,
-		Signature: signature,
+		Signature:  signature,
 	}, nil
 }
 
@@ -236,7 +216,6 @@ func obtenerMasterKey(ruta string) (crypto.PrivKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Si el archivo tiene el prefijo 08011240 (libp2p protobuf)
 	if len(rawBytes) > 64 {
 		rawBytes = rawBytes[len(rawBytes)-64:]
 	}
@@ -272,21 +251,15 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 	masterPubKey, existe := n.MasterEntities[rec.EntityName]
 	if existe {
 		mpk, _ := masterPubKey.Raw()
-		log.Debug("Master: ", rec.EntityName, " : ", hex.EncodeToString(mpk))
-		log.Debug(fmt.Sprintf("Verificando entidad '%s' con llave pública '%s'", rec.EntityName, masterPubKey))
+		slog.Debug("Verificando entidad	", "Master", rec.EntityName, "entidad", rec.EntityName, "key", masterPubKey, "peer", rec.PeerID.String(), "mpk", hex.EncodeToString(mpk))
 		if !existe || masterPubKey == nil {
 			return nil, fmt.Errorf("la entidad '%s' no está configurada o su llave pública es nula", rec.EntityName)
 		}
 	} else {
+		slog.Debug("Verificando entidad	", "Master", rec.EntityName, "entidad", rec.EntityName, "key", masterPubKey, "peer", rec.PeerID.String())
 		return nil, fmt.Errorf("la entidad '%s' no está configurada o su llave pública es nula", rec.EntityName)
 	}
-
-	log.Debug(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
 	msgAuth := []byte(fmt.Sprintf("%s:%s:%s", rec.ID, rec.EntityName, rec.PeerID.String()))
-	log.Debug(fmt.Sprintf("SERVER PAYLOAD HEX: %x", []byte(msgAuth)))
-	log.Debug(fmt.Sprintf("SERVER SIG HEX: %x", rec.Signature))
-
-	// 4. Verificar
 	valid, err := masterPubKey.Verify(msgAuth, rec.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("error al ejecutar verificación de firma: %w", err)
@@ -301,6 +274,5 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 func esReplay(firma []byte) bool {
 	cache.Lock()
 	defer cache.Unlock()
-
 	return false
 }

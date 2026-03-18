@@ -27,7 +27,7 @@ import (
 	global "Veredarii/global"
 	"context"
 	"encoding/hex"
-	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -55,25 +55,24 @@ func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
 
 	ds, err := dspebble.NewDatastore("store/"+n.Name+".db", nil)
 	if err != nil {
-		log.Fatal("No se pudo inicializar el datastore:", err)
+		slog.Error("No se pudo inicializar el datastore", "error", err)
+		return nil, nil
 	}
 
 	blockDs := namespace.Wrap(ds, datastore.NewKey("/blocks"))
 	bstore := blockstore.NewBlockstore(blockDs)
-
-	// Bitswap para intercambiar bloques con otros peers
 	bsnetwork := bsnet.NewFromIpfsHost(n.Host)
 	exchange := bitswap.New(context.Background(), bsnetwork, routinghelpers.Null{}, bstore)
 
 	bsvc := blockservice.New(bstore, exchange)
 	dagService := merkledag.NewDAGService(bsvc)
-	topic := "mi-aplicacion-chat"
+	topic := "datastore-topic-crdt"
 	opts := crdt.DefaultOptions()
 	opts.RebroadcastInterval = 10 * time.Second
 	n.chPutHook = make(chan global.KVType)
 	go n.PutHookHandler()
 	opts.PutHook = func(k datastore.Key, v []byte) {
-		log.Infof("[CRDT COMMIT] %s = %s", k, string(v))
+		slog.Debug("[CRDT COMMIT]", "key", k, "value", string(v))
 		n.chPutHook <- global.KVType{Key: k.String(), Name: string(v)}
 	}
 
@@ -96,10 +95,10 @@ func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
 		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
 			if err := n.DataStore.Sync(context.Background(), datastore.NewKey("/")); err != nil {
-				log.Errorf("Error en sync periódico: %v", err)
+				slog.Error("Error en sync periódico", "error", err)
 			}
 			if err := n.PebbleStore.Sync(context.Background(), datastore.NewKey("/")); err != nil {
-				log.Errorf("Error en sync pebble: %v", err)
+				slog.Error("Error en sync pebble", "error", err)
 			}
 		}
 	}()
@@ -108,14 +107,14 @@ func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
 }
 
 func (n *Network) PutCRDT(bucket string, key string, value string) {
-	fmt.Println("Guardando en CRDT...")
+	slog.Debug("Guardando en CRDT", "bucket", bucket, "key", key, "value", value)
 	k := datastore.NewKey("/" + bucket + "/" + key)
 	err := n.DataStore.Put(context.Background(), k, []byte(value))
 	if err != nil {
-		log.Printf("Error al guardar: %v", err)
+		slog.Error("Error al guardar", "error", err)
 	}
 	if err := n.PebbleStore.Sync(context.Background(), datastore.NewKey("/")); err != nil {
-		log.Printf("Error en sync: %v", err)
+		slog.Error("Error en sync", "error", err)
 	}
 }
 
@@ -125,13 +124,13 @@ func (n *Network) Query(bucket string) []global.KVType {
 		Prefix: "/crdt-data/s/k/" + bucket,
 	})
 	if err != nil {
-		log.Error("error en query: %w", err)
+		slog.Error("error en query", "error", err)
 	}
 	defer results.Close()
 
 	for r := range results.Next() {
 		if r.Error != nil {
-			log.Error("error en query: %w", r.Error)
+			slog.Error("error en query", "error", r.Error)
 			continue
 		}
 		if !strings.HasSuffix(r.Key, "/v") {
@@ -146,46 +145,39 @@ func (n *Network) Query(bucket string) []global.KVType {
 
 func (n *Network) QueryCRDT() {
 	q := query.Query{}
-
 	ctx := context.Background()
 	results, err := n.DataStore.Query(ctx, q)
 	if err != nil {
-		fmt.Printf("Error al consultar: %v\n", err)
+		slog.Error("Error al consultar", "error", err)
 		return
 	}
-
 	defer results.Close()
 
-	fmt.Println("Listado de registros en CRDT:")
+	slog.Debug("Listado de registros en CRDT:")
 	for result := range results.Next() {
 		if result.Error != nil {
-			fmt.Printf("Error en el registro: %v\n", result.Error)
+			slog.Error("Error en el registro", "error", result.Error)
 			continue
 		}
-
-		fmt.Printf("Clave: %s | Valor: %s\n", result.Key, string(result.Value))
+		slog.Debug("CRDT", "clave", result.Key, "valor", string(result.Value))
 	}
-
 }
 
 func (n *Network) PutHookHandler() {
-
 	rxPeers, _ := regexp.Compile("/peers/.*")
 	rxMembers, _ := regexp.Compile("/members/.*")
 
 	for kv := range n.chPutHook {
-		// Members
 		if rxMembers.Match([]byte(kv.Key)) {
-
 			pubBytes, err := hex.DecodeString(kv.Name)
 			if err != nil {
-				fmt.Printf("❌ Error decodificando hex: %v\n", err)
+				slog.Error("Error decodificando hex", "error", err)
 				return
 			}
 
 			pubKey, err := crypto.UnmarshalPublicKey(pubBytes)
 			if err != nil {
-				fmt.Printf("❌ Error unmarshal libp2p: %v\n", err)
+				slog.Error("Error unmarshal libp2p", "error", err)
 				return
 			}
 			n.MutexSesiones.Lock()
@@ -194,13 +186,11 @@ func (n *Network) PutHookHandler() {
 			continue
 		}
 
-		// Peers
 		if rxPeers.Match([]byte(kv.Key)) {
 			cleanKey := strings.TrimPrefix(kv.Key, "/peers/")
-			log.Debug("✅ Peer {", cleanKey, "}")
 			id, err := peer.Decode(cleanKey)
 			if err != nil {
-				log.Error("❌ Error decodificando peer: ", cleanKey, " : ", err)
+				slog.Error("Error decodificando peer", "key", cleanKey, "error", err)
 				continue
 			}
 

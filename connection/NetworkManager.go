@@ -26,7 +26,7 @@ SOFTWARE.
 import (
 	global "Veredarii/global"
 
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 var NM *NetworkManager
@@ -40,21 +40,18 @@ func NewNetworkManager() *NetworkManager {
 	N := &NetworkManager{
 		Networks: make(map[string]*Network),
 	}
-
 	N.ChannelNetworks = make(chan string)
-
 	return N
 }
 
 func (nm *NetworkManager) StartProcess() {
-	select {
-	case order := <-nm.ChannelNetworks:
+	for {
+		order := <-nm.ChannelNetworks
 		switch order {
 		case "init":
-			log.Debug("Iniciando redes...")
 			StartRBAC()
 			for _, network := range nm.Networks {
-				log.Debug("Iniciando red: ", network.Name)
+				slog.Debug("Iniciando red", "nombre", network.Name)
 				network.Connect()
 			}
 		}

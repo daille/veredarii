@@ -85,14 +85,11 @@ var pivotLsCmd = &cobra.Command{
 		} else {
 			fmt.Println("No existen pivotes")
 		}
-
 	},
 }
 
 func init() {
 	pivotLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
-
 	pivotCmd.AddCommand(pivotLsCmd)
-
 	rootCmd.AddCommand(pivotCmd)
 }

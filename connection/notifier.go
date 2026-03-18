@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/multiformats/go-multiaddr"
@@ -42,7 +42,6 @@ func (nn *networkNotifiee) ClosedStream(net network.Network, s network.Stream)  
 
 func (nn *networkNotifiee) Disconnected(net network.Network, c network.Conn) {
 	peerID := c.RemotePeer()
-
 	nn.n.MutexSesiones.Lock()
 	RBAC.MutexSesiones.Lock()
 	defer nn.n.MutexSesiones.Unlock()
@@ -51,6 +50,6 @@ func (nn *networkNotifiee) Disconnected(net network.Network, c network.Conn) {
 	if _, existe := nn.n.SesionesActivas[peerID]; existe {
 		delete(nn.n.SesionesActivas, peerID)
 		delete(RBAC.PeerEntity, peerID.String())
-		fmt.Printf("🧹 Sesión eliminada: el peer %s se ha desconectado\n", peerID)
+		slog.Debug("🧹 Sesión eliminada: el peer se ha desconectado", "peer", peerID)
 	}
 }

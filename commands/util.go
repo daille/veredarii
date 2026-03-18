@@ -31,25 +31,18 @@ import (
 
 	"github.com/ipfs/go-datastore/query"
 	dspebble "github.com/ipfs/go-ds-pebble"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-// Variables para capturar los valores de las flags
-
-// 2. Comando Padre: entity
 var utilCmd = &cobra.Command{
 	Use:   "util",
 	Short: "Operaciones de util",
-	// No definimos Run aquí para obligar a usar un subcomando
 }
 
-// 3. Subcomando: create
 var databaseCmd = &cobra.Command{
 	Use:   "database",
 	Short: "Operaciones de base de datos",
 	Run: func(cmd *cobra.Command, args []string) {
-		//inspectLocalDB("store/network_veredarii_test.db")
 		inspectLocalDB2("store/network_veredarii_test.db")
 	},
 }
@@ -75,14 +68,12 @@ func inspectLocalDB2(dbPath string) error {
 	}
 	defer results.Close()
 
-	fmt.Println("=== CONTENIDO LOCAL ===")
 	count := 0
 	for r := range results.Next() {
 		if r.Error != nil {
 			fmt.Printf("Error: %v\n", r.Error)
 			continue
 		}
-		// solo las keys que terminan en /v tienen el valor real
 		if !strings.HasSuffix(r.Key, "/v") {
 			continue
 		}
@@ -91,21 +82,19 @@ func inspectLocalDB2(dbPath string) error {
 		fmt.Printf("[%d] KEY: %s | VALUE: %s\n", count, cleanKey, string(r.Entry.Value))
 		count++
 	}
-	fmt.Printf("=== TOTAL: %d entradas ===\n", count)
-
 	resp := []global.KVType{}
 
 	results, err = ds.Query(context.Background(), query.Query{
 		Prefix: "/crdt-data/s/k/",
 	})
 	if err != nil {
-		log.Error("error en query: %w", err)
+		fmt.Println("error en query: %w", err)
 	}
 	defer results.Close()
 
 	for r := range results.Next() {
 		if r.Error != nil {
-			log.Error("error en query: %w", r.Error)
+			fmt.Println("error en query: %w", r.Error)
 			continue
 		}
 		if !strings.HasSuffix(r.Key, "/v") {

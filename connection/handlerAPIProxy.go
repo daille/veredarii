@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"Veredarii/configuration"
 	global "Veredarii/global"
@@ -52,13 +52,13 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	remotePeer := s.Conn().RemotePeer()
 	PID, err := peer.Decode(remotePeer.String())
 	if err != nil {
-		log.Error("❌ Error decodificando peer: ", remotePeer.String(), " : ", err)
+		slog.Error("Error decodificando peer", "peer", remotePeer.String(), "error", err)
 		return
 	}
 	entidad := n.Peers[PID].Entity
 
 	if !RBAC.HasPermition2Protocol(entidad, n.Name, global.ProtocolAPIProxy) {
-		log.Debug("Denegado, sin permiso al protocolo: ", entidad, n.Name, global.ProtocolAPIProxy)
+		slog.Warn("Denegado, sin permiso al protocolo", "entidad", entidad, "red", n.Name, "protocolo", global.ProtocolAPIProxy)
 		s.Reset()
 		return
 	}
@@ -68,27 +68,27 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 		data, err := readDelimited(s)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("Error leyendo stream: %v", err)
+				slog.Error("Error leyendo stream", "error", err.Error())
 			}
 			return
 		}
 
 		if err := proto.Unmarshal(data, msg); err != nil {
-			log.Printf("Error unmarshal protobuf: %v", err)
+			slog.Error("Error unmarshal protobuf", "error", err.Error())
 			return
 		}
 		tps := RBAC.GetTPS(entidad, global.ProtocolAPIProxy, n.Name, msg.Service)
-		log.Debug("TPS: ", tps)
+		slog.Debug("TPS: ", tps)
 		limiter := n.RateLimiter.GetLimiter(entidad, global.ProtocolAPIProxy, tps)
 
 		if !limiter.Allow() {
-			fmt.Printf("⚠️ Entidad '%s' excedió su límite global de %v TPS\n", entidad, tps)
+			slog.Warn("Entidad excedió su límite global de TPS", "entidad", entidad, "tps", tps)
 			s.Reset()
 			return
 		}
 
 		if !RBAC.Allowed(entidad, n.Name, global.ProtocolAPIProxy, msg.Service) {
-			log.Debug("Denegado, sin permiso al servicio: ", remotePeer.String(), n.Name, global.ProtocolAPIProxy, msg.Service)
+			slog.Warn("Denegado, sin permiso al servicio: ", "entidad", entidad, "red", n.Name, "protocolo", global.ProtocolAPIProxy, "servicio", msg.Service)
 			s.Reset()
 			return
 		}
@@ -96,7 +96,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 		b := bufio.NewReader(bytes.NewReader(msg.Payload))
 		req, err := http.ReadRequest(b)
 		if err != nil {
-			log.Println("Error reconstruyendo petición:", err)
+			slog.Error("Error reconstruyendo petición:", "error", err.Error())
 			return
 		}
 		fmt.Printf("📩 Recibido de %s: %s\n", s.Conn().RemotePeer().String()[:6], req.URL.String())
@@ -110,17 +110,16 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 						var bodyBytes []byte
 
 						if service.Plugin == "" {
-							log.Debug("Procesando API sin plugin: ", service.Name)
 							urlDestino := fmt.Sprintf("%s?%s", service.ResourcePath, req.URL.RawQuery)
 							u, err := url.Parse(urlDestino)
 							if err != nil {
-								log.Error("Error parseando url: ", err)
+								slog.Error("Error parseando url: ", "error", err.Error())
 								return
 							}
 
 							proxyReq, err := http.NewRequest(req.Method, urlDestino, req.Body)
 							if err != nil {
-								log.Error("Error creando nuevo request:", err)
+								slog.Error("Error creando nuevo request:", "error", err.Error())
 								return
 							}
 							proxyReq.Header = req.Header
@@ -129,22 +128,21 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 							client := &http.Client{}
 							resp, err := client.Do(proxyReq)
 							if err != nil {
-								log.Printf("Error replicando el llamado: %v", err)
+								slog.Error("Error replicando el llamado: %v", "error", err.Error())
 								return
 							}
 							bodyBytes, err = io.ReadAll(resp.Body)
 							if err != nil {
-								log.Printf("Error leyendo el cuerpo de la respuesta: %v", err)
+								slog.Error("Error leyendo el cuerpo de la respuesta: %v", "error", err.Error())
 								return
 							}
 							resp.Body.Close()
 						} else {
-							log.Debug("Procesando API con plugin: ", service.Name)
 							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 							defer cancel()
 							bodyBytes, err = pluginmanager.PM.Execute(ctx, service.Plugin, msg.Payload)
 							if err != nil {
-								log.Error("Error ejecutando plugin: ", err.Error())
+								slog.Error("Error ejecutando plugin: ", "error", err.Error())
 							}
 						}
 
@@ -155,7 +153,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 
 						resData, _ := proto.Marshal(response)
 						if _, err := writeDelimited(s, resData); err != nil {
-							log.Printf("Error respondiendo: %v", err)
+							slog.Error("Error respondiendo: %v", "error", err.Error())
 							return
 						}
 					}
@@ -163,7 +161,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 			}
 		}
 		if !founded {
-			log.Error("No se encontro la red: ", n.Name)
+			slog.Error("No se encontro la red", "red", n.Name)
 			s.Reset()
 			return
 		}
@@ -173,7 +171,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 func (n *Network) Send(service string, payload []byte) []byte {
 	s, err := n.getStream(global.ProtocolAPIProxy, service)
 	if err != nil {
-		log.Printf("Error obteniendo stream: %v", err)
+		slog.Error("Error obteniendo stream", "error", err.Error())
 		return nil
 	}
 
@@ -182,7 +180,6 @@ func (n *Network) Send(service string, payload []byte) []byte {
 		Service: service,
 		Payload: payload,
 	}
-
 	data, _ := proto.Marshal(msg)
 
 	_, err = writeDelimited(s, data)
@@ -200,7 +197,6 @@ func (n *Network) Send(service string, payload []byte) []byte {
 		proto.Unmarshal(resData, res)
 		return res.Payload
 	}
-
 	return nil
 }
 
@@ -230,26 +226,20 @@ func (n *Network) IsPublic() bool {
 	addrs := n.Host.Addrs()
 	for _, addr := range addrs {
 		addrStr := addr.String()
-
-		// 1. Ignoramos lo local
 		if strings.Contains(addrStr, "127.0.0.1") || strings.Contains(addrStr, "::1") {
 			continue
 		}
 
-		// 2. Ignoramos IPs privadas típicas de router/NAT
 		if strings.Contains(addrStr, "/ip4/192.168.") ||
 			strings.Contains(addrStr, "/ip4/10.") ||
-			strings.Contains(addrStr, "/ip4/172.16.") { // (puedes añadir más si quieres)
+			strings.Contains(addrStr, "/ip4/172.16.") {
 			continue
 		}
 
-		// 3. Ignoramos si es una dirección de Relay (p2p-circuit)
-		// Porque si usas relay, no eres "realmente" público, el pivote te está ayudando
 		if strings.Contains(addrStr, "p2p-circuit") {
 			continue
 		}
 
-		// Si llegamos aquí y hay una dirección IP4 o IP6, ¡es externa!
 		return true
 	}
 	return false

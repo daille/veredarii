@@ -25,10 +25,9 @@ SOFTWARE.
 */
 import (
 	"context"
-	"fmt"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/discovery"
@@ -46,12 +45,12 @@ func (n *Network) initDHT() {
 	var err error
 	n.DHT, err = dht.New(ctx, n.Host, mode, dht.ProtocolPrefix(protocolPrefix))
 	if err != nil {
-		log.Error(err)
+		slog.Error("Error al crear el DHT", "error", err)
 		return
 	}
 
 	if err = n.DHT.Bootstrap(ctx); err != nil {
-		log.Error(err)
+		slog.Error("Error al hacer bootstrap del DHT", "error", err)
 		return
 	}
 
@@ -62,7 +61,7 @@ func (n *Network) initDHT() {
 
 	go func() {
 		<-n.DHT.RefreshRoutingTable()
-		log.Debug("✅ Tabla de ruteo refrescada")
+		slog.Debug("Tabla de ruteo refrescada")
 	}()
 
 	for {
@@ -70,14 +69,14 @@ func (n *Network) initDHT() {
 		case _ = <-ticker.C:
 			n.publishServices()
 		case <-done:
-			log.Info("Stopping ticker...")
+			slog.Info("Deteniendo ticker...")
 			return
 		}
 	}
 }
 
 func (n *Network) publishServices() {
-	log.Info("Anunciando servicios en la DHT...")
+	slog.Info("Anunciando servicios en la DHT...")
 	ctx := context.Background()
 	n.RoutingDiscovery = routing.NewRoutingDiscovery(n.DHT)
 	for _, topic := range n.Resources.API {
@@ -93,28 +92,23 @@ func (n *Network) publishServices() {
 
 func (n *Network) anunciarServicio(ctx context.Context, serviceName string) {
 	util.Advertise(ctx, n.RoutingDiscovery, serviceName)
-	fmt.Printf("Anunciando servicio '%s' en la DHT...\n", serviceName)
+	slog.Info("Anunciando servicio en la DHT", "service", serviceName)
 }
 
 func (n *Network) BuscarServicio(ctx context.Context, serviceName string) *peer.AddrInfo {
-
-	fmt.Println(len(n.DHT.RoutingTable().ListPeers()))
 	peerChan, err := n.RoutingDiscovery.FindPeers(ctx, serviceName, discovery.Limit(10))
 	if err != nil {
-		fmt.Printf("Error al buscar servicio: %v\n", err)
+		slog.Error("Error al buscar servicio", "error", err)
 		return nil
 	}
-
-	fmt.Printf("Buscando proveedores de '%s'...\n", serviceName)
+	slog.Info("Buscando proveedores de servicio", "service", serviceName)
 
 	for peerInfo := range peerChan {
 		if peerInfo.ID == n.Host.ID() {
 			continue
 		}
-
-		fmt.Printf("✨ Encontrado servicio en Peer: %s\n", peerInfo.ID)
+		slog.Info("Encontrado servicio en Peer", "peer", peerInfo.ID)
 		return &peerInfo
 	}
-
 	return nil
 }

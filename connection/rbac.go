@@ -24,12 +24,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"fmt"
 	"strconv"
 	"sync"
 
+	"log/slog"
+
 	"github.com/casbin/casbin/v2"
-	log "github.com/sirupsen/logrus"
 )
 
 var RBAC *RBACType
@@ -41,45 +41,45 @@ type RBACType struct {
 }
 
 func StartRBAC() {
+	slog.Debug("Iniciando RBAC...")
 	var err error
 	RBAC = &RBACType{}
 	RBAC.Enforcer, err = casbin.NewEnforcer("./model.conf", "./policy.csv")
 	RBAC.PeerEntity = make(map[string]string)
 	if err != nil {
-		log.Fatal("Error cargando RBAC:", err)
+		slog.Error("Error cargando RBAC", "error", err)
 		return
 	}
 }
 
 func (rb *RBACType) Allowed(entity string, dom string, obj string, act string) bool {
 	if res, _ := rb.Enforcer.Enforce(entity, dom, obj, act); res {
-		log.Debug(fmt.Sprintf("Permitido: %s %s %s %s", entity, dom, obj, act))
+		slog.Debug("Permitido", "entity", entity, "dom", dom, "obj", obj, "act", act)
 		return true
 	}
-	log.Debug(fmt.Sprintf("Denegado: %s %s %s %s", entity, dom, obj, act))
+	slog.Debug("Denegado", "entity", entity, "dom", dom, "obj", obj, "act", act)
 	return false
 }
 
-func (rb *RBACType) GetTPS(entidad string, obj string, dom string, act string) int64 {
-	ok, rule, err := rb.Enforcer.EnforceEx(entidad, dom, obj, act)
+func (rb *RBACType) GetTPS(entity string, obj string, dom string, act string) int64 {
+	ok, rule, err := rb.Enforcer.EnforceEx(entity, dom, obj, act)
 	if !ok {
-		log.Error("No se encontró la política: ", ok)
-		log.Error("entidad: ", entidad, " dom: ", dom, " obj: ", obj, " act: ", act)
+		slog.Debug("No se encontró la política", "entity", entity, "dom", dom, "obj", obj, "act", act)
 		return 0
 	} else if err != nil {
-		log.Error("Error al obtener la lista de políticas: ", err)
+		slog.Error("Error al obtener la lista de políticas", "error", err)
 		return 0
 	}
 
 	tps, _ := strconv.ParseInt(rule[4], 10, 64)
-	log.Debug(fmt.Sprintf("TPS: %d %s %s %s %s", tps, entidad, obj, dom, act))
+	slog.Debug("TPS", "tps", tps, "entity", entity, "dom", dom, "obj", obj, "act", act)
 	return tps
 }
 
 func (rb *RBACType) HasPermition2Protocol(entity string, dom string, obj string) bool {
 	policies, err := rb.Enforcer.GetFilteredPolicy(0, entity, dom, obj)
 	if err != nil {
-		log.Error("Error al obtener la lista de políticas: ", err)
+		slog.Error("Error al obtener la lista de políticas", "error", err)
 		return false
 	}
 	if len(policies) > 0 {

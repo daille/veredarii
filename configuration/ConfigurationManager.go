@@ -27,9 +27,8 @@ import (
 	global "Veredarii/global"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var CM *ConfigurationManager
@@ -54,7 +53,7 @@ func (cm *ConfigurationManager) NewConfig() *global.ConfigType {
 func (cm *ConfigurationManager) LoadConfig() error {
 	var err error
 	if err = cm.loadJson(ConfigFilename, cm.Config); err != nil {
-		log.Error("Error cargando configuracion:", err)
+		slog.Error("Error cargando configuracion", "error", err)
 		return err
 	}
 
@@ -62,7 +61,7 @@ func (cm *ConfigurationManager) LoadConfig() error {
 		// resources
 		if network.ResourcesPath != "" {
 			if err = cm.loadJson(network.ResourcesPath, &cm.Config.Networks[idx].Resources); err != nil {
-				log.Error("Error cargando recursos:", err)
+				slog.Error("Error cargando recursos", "error", err)
 				return err
 			}
 		}
@@ -70,7 +69,7 @@ func (cm *ConfigurationManager) LoadConfig() error {
 		// remote resources
 		if network.RemoteResourcesPath != "" {
 			if err = cm.loadJson(network.RemoteResourcesPath, &cm.Config.Networks[idx].RemoteResources); err != nil {
-				log.Error("Error cargando recursos remotos:", err)
+				slog.Error("Error cargando recursos remotos", "error", err)
 				return err
 			}
 		}
@@ -86,13 +85,13 @@ func (cm *ConfigurationManager) GetConfig() *global.ConfigType {
 func (cm *ConfigurationManager) loadJson(file string, obj interface{}) error {
 	buf, err := os.ReadFile(file)
 	if err != nil {
-		log.Error("Error leyendo archivo:", file, err)
+		slog.Error("Error leyendo archivo", "file", file, "error", err)
 		return err
 	}
 
 	err = json.Unmarshal(buf, obj)
 	if err != nil {
-		log.Error("Error deserializando archivo:", err)
+		slog.Error("Error deserializando archivo:", "file", file, "error", err)
 		return err
 	}
 
@@ -111,7 +110,7 @@ func (cm *ConfigurationManager) AddEntity(network string, entity global.KVType) 
 func (cm *ConfigurationManager) Save() error {
 	buf, err := json.MarshalIndent(cm.Config, "", "    ")
 	if err != nil {
-		log.Error("Error serializando archivo:", err)
+		slog.Error("Error serializando archivo:", "file", ConfigFilename, "error", err)
 		return err
 	}
 
@@ -120,7 +119,6 @@ func (cm *ConfigurationManager) Save() error {
 
 func (cm *ConfigurationManager) SaveRemoteResources(network string) error {
 	if network == "" {
-		log.Error("Error guardando recursos remotos: red no especificada")
 		return errors.New("red no especificada")
 	}
 
@@ -129,7 +127,7 @@ func (cm *ConfigurationManager) SaveRemoteResources(network string) error {
 			remoteResourcesPath := "./remote_resources_" + network + ".json"
 			buf, err := json.MarshalIndent(cm.Config.Networks[idx].RemoteResources, "", "    ")
 			if err != nil {
-				log.Error("Error serializando archivo:", err)
+				slog.Error("Error serializando archivo:", "file", remoteResourcesPath, "error", err)
 				return err
 			}
 			return os.WriteFile(remoteResourcesPath, buf, 0644)

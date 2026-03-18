@@ -25,11 +25,16 @@ SOFTWARE.
 */
 import (
 	commands "Veredarii/commands"
+	"os"
 
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 func main() {
-	log.SetLevel(log.DebugLevel)
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 	commands.Execute()
 }

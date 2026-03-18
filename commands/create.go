@@ -30,7 +30,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -93,7 +92,7 @@ var createCmd = &cobra.Command{
 			Network.ResourcesPath = "./resources_" + network + ".json"
 			err = os.WriteFile("./resources_"+network+".json", []byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"), 0644)
 			if err != nil {
-				log.Fatalf("Error escribiendo archivo: %v", err)
+				fmt.Println("Error escribiendo archivo: %v", err)
 			}
 		}
 
@@ -102,7 +101,7 @@ var createCmd = &cobra.Command{
 			Network.RemoteResourcesPath = "./remote_resources_" + network + ".json"
 			err = os.WriteFile("./remote_resources_"+network+".json", []byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"), 0644)
 			if err != nil {
-				log.Fatalf("Error escribiendo archivo: %v", err)
+				fmt.Println("Error escribiendo archivo: %v", err)
 			}
 		}
 
@@ -111,13 +110,13 @@ var createCmd = &cobra.Command{
 		// 3. Convertir de vuelta a JSON con indentación para que sea legible
 		updatedJSON, err := json.MarshalIndent(config, "", "    ")
 		if err != nil {
-			log.Fatalf("Error creando JSON: %v", err)
+			fmt.Println("Error creando JSON: %v", err)
 		}
 
 		// 4. Guardar los cambios
 		err = os.WriteFile(configuration.ConfigFilename, updatedJSON, 0644)
 		if err != nil {
-			log.Fatalf("Error escribiendo archivo: %v", err)
+			fmt.Println("Error escribiendo archivo: %v", err)
 		}
 
 	},

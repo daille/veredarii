@@ -32,9 +32,10 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/libp2p/go-libp2p/core/network"
 	ma "github.com/multiformats/go-multiaddr"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
 
@@ -57,34 +58,34 @@ var globalUnionLimiter = rate.NewLimiter(rate.Limit(0.2), 3)
 
 func (n *Network) handleJoinStream(s network.Stream) {
 	if !globalUnionLimiter.Allow() {
-		log.Error(" [!] TPS Global excedido. Rechazando conexión de: ", s.Conn().RemotePeer())
+		slog.Error("TPS Global excedido. Rechazando conexión de: ", "peer", s.Conn().RemotePeer())
 		s.Reset()
 		return
 	}
 	defer s.Close()
-	log.Info(" [+] Procesando solicitud legítima de: ", s.Conn().RemotePeer())
+	slog.Info("Procesando solicitud legítima de: ", "peer", s.Conn().RemotePeer())
 
 	limitReader := io.LimitReader(s, 4096)
 	body, err := io.ReadAll(limitReader)
 	if err != nil {
-		log.Error("❌ Error leyendo solicitud:", err)
+		slog.Error("Error leyendo solicitud:", "error", err)
 		return
 	}
 
-	log.Info("Solicitud recibida:", string(body))
+	slog.Debug("Solicitud recibida:", "body", string(body))
 
 	var joinRequest JoinRequest
 	err = json.Unmarshal(body, &joinRequest)
 	if err != nil {
-		log.Error("❌ Error deserializando solicitud:", err)
+		slog.Error("Error deserializando solicitud:", "error", err)
 		return
 	}
-	log.Info("Solicitud deserializada:", joinRequest.EntityName)
+	slog.Info("Solicitud deserializada:", "entity", joinRequest.EntityName)
 
-	log.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", joinRequest.EntityName, joinRequest.PublicKey))
+	slog.Debug(fmt.Sprintf("Cargando entidad '%s' con llave pública '%s'", joinRequest.EntityName, joinRequest.PublicKey))
 	_, err = global.ParsePubKeyRecibida(joinRequest.PublicKey)
 	if err != nil {
-		log.Error("❌ Error decodificando llave publica:", err)
+		slog.Error("Error decodificando llave publica:", "error", err)
 		return
 	}
 
@@ -94,22 +95,19 @@ func (n *Network) handleJoinStream(s network.Stream) {
 
 	invitationSplit := strings.Split(joinRequest.Invitation, "|")
 	invitation := global.DecipherInvitation(invitationSplit[0]+"|"+invitationSplit[1], joinRequest.InviterName, key)
-	log.Info("Invitación descifrada:", invitation)
+	slog.Info("Invitación descifrada", "invitation", invitation)
 	invitationSplit = strings.Split(invitation, ";")
 
 	if invitationSplit[0] != joinRequest.InviterName {
-		log.Debug(fmt.Sprintf("Invitación invitador inválida: %s != %s", invitationSplit[0], joinRequest.InviterName))
-		log.Error("❌ Error descifrando invitación")
+		slog.Debug(fmt.Sprintf("Invitación invitador inválida: %s != %s", invitationSplit[0], joinRequest.InviterName))
 		return
 	}
 	if invitationSplit[3] != joinRequest.Network {
-		log.Debug(fmt.Sprintf("Invitación Red inválida: %s != %s", invitationSplit[3], joinRequest.Network))
-		log.Error("❌ Error descifrando invitación")
+		slog.Debug(fmt.Sprintf("Invitación Red inválida: %s != %s", invitationSplit[3], joinRequest.Network))
 		return
 	}
 	if invitationSplit[2] != joinRequest.EntityName {
-		log.Debug(fmt.Sprintf("Invitación invitado inválida: %s != %s", invitationSplit[2], joinRequest.EntityName))
-		log.Error("❌ Error descifrando invitación")
+		slog.Debug(fmt.Sprintf("Invitación invitado inválida: %s != %s", invitationSplit[2], joinRequest.EntityName))
 		return
 	}
 
@@ -118,30 +116,27 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		if b.Name == invitationSplit[0] {
 			a = true
 			if !global.VerifyInvitation(invitation, b.Key) {
-				log.Error("❌ Error verificando firma de la invitacion")
+				slog.Error("Error verificando firma de la invitacion")
 				return
 			}
 			break
 		}
 	}
 	if !a {
-		log.Error("❌ Error verificando firma, entidad no encontrada")
+		slog.Error("Error verificando firma, entidad no encontrada")
 		return
 	}
 
 	expiracion, err := time.Parse(time.RFC3339, invitationSplit[4])
 	if err != nil {
-		log.Error("❌ Error al parsear la fecha:", err)
+		slog.Error("Error al parsear la fecha:", "error", err)
 		return
 	}
 	if time.Now().After(expiracion) {
-		log.Error("❌ La invitación ha expirado.")
+		slog.Error("La invitación ha expirado.")
 		return
 	} else {
-		log.Info("✅ La invitación aún es válida.")
-		faltante := time.Until(expiracion)
-		log.Info(fmt.Sprintf("Expira en: %v\n", faltante.Round(time.Minute)))
-
+		slog.Info("La invitación es válida y se acepta")
 		n.PutCRDT(MEMBERS, invitationSplit[2], joinRequest.PublicKey)
 	}
 }

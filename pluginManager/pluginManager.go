@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -52,7 +52,7 @@ func (pm *PluginManager) LoadPlugin(path string, poolSize int) {
 
 	compiled, err := extism.NewCompiledPlugin(pm.ctx, manifest, config, pm.hostFunctions)
 	if err != nil {
-		log.Printf("❌ Error compilando plugin %s: %v", name, err)
+		slog.Error("Error compilando plugin", "name", name, "error", err)
 		return
 	}
 
@@ -60,7 +60,7 @@ func (pm *PluginManager) LoadPlugin(path string, poolSize int) {
 	for i := 0; i < poolSize; i++ {
 		inst, err := compiled.Instance(pm.ctx, extism.PluginInstanceConfig{})
 		if err != nil {
-			log.Printf("❌ Error creando instancia %d de %s: %v", i, name, err)
+			slog.Error("Error creando instancia", "index", i, "name", name, "error", err)
 			continue
 		}
 
@@ -69,7 +69,6 @@ func (pm *PluginManager) LoadPlugin(path string, poolSize int) {
 			if err == nil {
 				var meta map[string]any
 				json.Unmarshal(out, &meta)
-				fmt.Printf("✅ Plugin cargado: %v\n", meta)
 			}
 		}
 		ch <- inst
@@ -79,7 +78,7 @@ func (pm *PluginManager) LoadPlugin(path string, poolSize int) {
 	pm.pools[name] = &pluginPool{compiled: compiled, pool: ch}
 	pm.mu.Unlock()
 
-	log.Printf("✅ Plugin '%s' cargado con %d instancias", name, len(ch))
+	slog.Info("Plugin cargado", "name", name, "instances", len(ch))
 }
 
 func (pm *PluginManager) Execute(ctx context.Context, pluginName string, data []byte) ([]byte, error) {
@@ -112,6 +111,6 @@ func (pm *PluginManager) Close() {
 			inst.Close(pm.ctx)
 		}
 		p.compiled.Close(pm.ctx)
-		log.Printf("🔒 Plugin '%s' cerrado", name)
+		slog.Info("Plugin cerrado", "name", name)
 	}
 }

@@ -29,8 +29,6 @@ import (
 	"net"
 	"os"
 	"runtime"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type Mensaje struct {
@@ -46,11 +44,12 @@ func SocketListener() {
 	if _, err := os.Stat(socketPath); err == nil {
 		os.Remove(socketPath)
 	}
-	os.Remove(socketPath) // Limpieza previa
+	os.Remove(socketPath)
 
 	l, err := net.Listen("unix", socketPath)
 	if err != nil {
-		log.Fatal("Error Listen:", err)
+		fmt.Println("Error Listen:", err)
+		os.Exit(1)
 	}
 	defer l.Close()
 

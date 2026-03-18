@@ -31,7 +31,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -39,6 +38,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -93,7 +93,8 @@ var joinCmd = &cobra.Command{
 		// Se conecta a la red
 		psk, err := global.DecodeV1PSK(key)
 		if err != nil {
-			log.Fatal("Error cargando PSK:", err)
+			fmt.Println("❌ Error cargando PSK:", err)
+			return
 		}
 
 		h, err := libp2p.New(
@@ -160,13 +161,15 @@ var joinCmd = &cobra.Command{
 
 		if err != nil {
 			if os.IsExist(err) {
-				log.Println("El archivo ya existe, no se hizo nada.")
+				fmt.Println("El archivo ya existe, no se hizo nada.")
 			}
-			log.Fatal("Error al intentar crear el archivo:", err)
+			fmt.Println("Error al intentar crear el archivo:", err)
+			return
 		} else {
 			_, err = f.Write([]byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"))
 			if err != nil {
-				log.Fatal("Error escribiendo contenido:", err)
+				fmt.Println("Error escribiendo contenido:", err)
+				return
 			}
 		}
 		f.Close()
@@ -176,9 +179,10 @@ var joinCmd = &cobra.Command{
 
 		if err != nil {
 			if os.IsExist(err) {
-				log.Println("El archivo ya existe, no se hizo nada.")
+				fmt.Println("El archivo ya existe, no se hizo nada.")
 			}
-			log.Fatal("Error al intentar crear el archivo:", err)
+			fmt.Println("Error al intentar crear el archivo:", err)
+			return
 		} else {
 			_, err = f.Write([]byte("{\n    \"API\": [\n        {}\n    ],\n    \"FILE\": [\n        {}\n    ],\n    \"DATA_SOURCE\": [\n        {}\n    ]\n}"))
 			if err != nil {
@@ -204,6 +208,7 @@ var joinCmd = &cobra.Command{
 		})
 		configuration.CM.Save()
 
+		fmt.Println("Red ", network, " creada con exito")
 	},
 }
 

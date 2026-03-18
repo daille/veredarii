@@ -29,6 +29,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -36,7 +37,6 @@ import (
 	"time"
 
 	dspebble "github.com/ipfs/go-ds-pebble"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
 	crdt "github.com/ipfs/go-ds-crdt"
@@ -143,22 +143,18 @@ func (n *Network) Connect() {
 
 	rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()))
 	if err != nil {
-		log.Error(err)
+		slog.Error("Error al crear el resource manager", "error", err)
 		return
 	}
 
-	cmgr, err := connmgr.NewConnManager(
-		20,
-		50,
-		connmgr.WithGracePeriod(time.Minute),
-	)
+	cmgr, err := connmgr.NewConnManager(20, 50, connmgr.WithGracePeriod(time.Minute))
 	if err != nil {
-		log.Error(err)
+		slog.Error("Error al crear el connection manager", "error", err)
 		return
 	}
 
 	if n.Pivots != nil {
-		log.Info("Iniciando libp2p como pivote")
+		slog.Info("Iniciando libp2p como pivote")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
 			libp2p.Identity(n.PK),
@@ -180,7 +176,7 @@ func (n *Network) Connect() {
 			}),
 		)
 	} else {
-		log.Info("Iniciando libp2p sin pivote")
+		slog.Info("Iniciando libp2p como entidad")
 		n.Host, err = libp2p.New(
 			libp2p.ListenAddrStrings(n.Address...),
 			libp2p.Identity(n.PK),
@@ -199,7 +195,7 @@ func (n *Network) Connect() {
 		)
 	}
 	if err != nil {
-		log.Error(err)
+		slog.Error("Error al crear el host", "error", err)
 		return
 	}
 	defer n.Host.Close()
@@ -212,18 +208,19 @@ func (n *Network) Connect() {
 	n.Host.SetStreamHandler(protocol.ID(global.ProtocolFileSystem), n.handleFileFetch)
 	n.Host.SetStreamHandler(protocol.ID(global.ProtocolFileSystemStat), n.handleFileStat)
 
-	fmt.Println("ID del peer:", n.Host.ID())
+	slog.Info("ID", "peer", n.Host.ID())
 	peerID := n.Host.ID().String()
 	for _, addr := range n.Host.Addrs() {
-		fmt.Printf("👉 %s/p2p/%s\n", addr, peerID)
+		slog.Info("Dirección del peer", "direccion", addr, "/p2p/", peerID)
 	}
 
 	n.PS, err = pubsub.NewGossipSub(context.Background(), n.Host,
 		pubsub.WithPeerExchange(true),
-		pubsub.WithFloodPublish(true), // publica a TODOS los peers, no solo el mesh
+		pubsub.WithFloodPublish(true),
 	)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Error al crear el pubsub", "error", err)
+		return
 	}
 
 	go n.InitBroadcast()
@@ -237,7 +234,7 @@ func (n *Network) Connect() {
 		for _, peerFounded := range peers {
 			id, err := peer.Decode(peerFounded.Key)
 			if err != nil {
-				log.Error("❌ Error decodificando peer: ", peerFounded.Key, " : ", err)
+				slog.Error("❌ Error decodificando peer", "peer", peerFounded.Key, "error", err)
 				continue
 			}
 			n.Peers[id] = PeerType{ID: id, Entity: peerFounded.Name}
@@ -245,27 +242,19 @@ func (n *Network) Connect() {
 
 		members := n.Query(MEMBERS)
 		for _, memberFounded := range members {
-
-			// 1. Convertir HEX string a []byte
 			pubBytes, err := hex.DecodeString(memberFounded.Name)
 			if err != nil {
-				log.Error("❌ Error decodificando llave publica del miembro :", memberFounded.Key, " Error: ", err)
-				log.Error("✅ Key {", memberFounded.Name, "}")
-				return
+				slog.Error("❌ Error decodificando llave publica", "miembro", memberFounded.Name, " Error: ", err, "Key", memberFounded.Key)
+				continue
 			}
-
-			// 2. Unmarshal usando la librería de libp2p
 			pubKey, err := crypto.UnmarshalPublicKey(pubBytes)
 			if err != nil {
-				// Aquí es donde te daba el error "invalid wire-format"
-				fmt.Printf("❌ Error unmarshal libp2p: %v\n", err)
-				return
+				slog.Error("❌ Error unmarshal libp2p", "error", err)
+				continue
 			}
 
 			if err != nil {
-				log.Error("❌ Error decodificando llave publica del miembro :", memberFounded.Key, " Error: ", err)
-				log.Error("✅ Key {", memberFounded.Name, "}")
-
+				slog.Error("❌ Error decodificando llave publica", "miembro", memberFounded.Name, " Error: ", err, "Key", memberFounded.Key)
 				continue
 			}
 			n.MasterEntities[memberFounded.Key] = pubKey
@@ -273,13 +262,13 @@ func (n *Network) Connect() {
 
 		n.Host.Network().Notify(&network.NotifyBundle{
 			ConnectedF: func(net network.Network, conn network.Conn) {
-				log.Infof("Peer conectado: %s", conn.RemotePeer())
+				slog.Info("Peer conectado", "peer", conn.RemotePeer())
 				go func() {
 					time.Sleep(2 * time.Second)
 					ctx := context.Background()
 					n.DataStore.MarkDirty(ctx)
 					if err := n.DataStore.Repair(ctx); err != nil {
-						log.Errorf("Error en repair: %v", err)
+						slog.Error("Error en repair", "error", err)
 					}
 				}()
 			},
@@ -288,9 +277,9 @@ func (n *Network) Connect() {
 
 	// Cargando Peers
 	for _, addr := range n.Host.Addrs() {
-		fmt.Printf("Dirección activa: %s\n", addr)
+		slog.Info("Dirección activa", "direccion", addr)
 	}
-	fmt.Println("\nServidor esperando conexiones...")
+	slog.Info("Servidor esperando conexiones...")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -306,25 +295,6 @@ func (n *Network) Connect() {
 
 	select {}
 }
-
-/*func (n *Network) getOrCreateStream(protocol string, targetID peer.AddrInfo) (network.Stream, error) {
-	n.MutexStreams.Lock()
-	defer n.MutexStreams.Unlock()
-
-	if s, ok := n.Streams[protocol][targetID.ID]; ok {
-		log.Debug("Stream ya existe para: ", targetID.ID, " Protocolo: ", protocol)
-		return s, nil
-	}
-
-	log.Debug("Abriendo Stream para: ", targetID.ID, " Protocolo: ", protocol)
-	s, err := n.Host.NewStream(context.Background(), targetID.ID, global.ProtocolAPIProxy)
-	if err != nil {
-		return nil, err
-	}
-
-	n.Streams[protocol][targetID.ID] = s
-	return s, nil
-}*/
 
 func (n *Network) getStream(proto string, service string) (network.Stream, error) {
 	n.MutexStreams.Lock()
@@ -346,7 +316,7 @@ func (n *Network) getStream(proto string, service string) (network.Stream, error
 		return nil, errors.New("Servicio no encontrado")
 	}
 
-	log.Debug("Abriendo Stream para: ", target.ID, " Protocolo: ", proto, " servicio: ", service)
+	slog.Debug("Abriendo Stream", "peer", target.ID, "protocolo", proto, "servicio", service)
 	s, err := n.Host.NewStream(context.Background(), target.ID, protocol.ID(proto))
 	if err != nil {
 		return nil, err
@@ -360,7 +330,7 @@ func (n *Network) getStream(proto string, service string) (network.Stream, error
 	go func(service string, st network.Stream, t *time.Timer) {
 		<-t.C
 		n.MutexStreams.Lock()
-		log.Printf("⏳ Timeout: Cerrando stream inactivo con %s", service)
+		slog.Debug("Timeout: Cerrando stream inactivo", "servicio", service)
 		st.Close()
 		delete(n.Streams[proto], service)
 		n.MutexStreams.Unlock()
@@ -375,19 +345,19 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 		peerCount := len(n.Host.Network().Peers())
 
 		if peerCount == 0 && len(n.Pivots) > 0 {
-			log.Warn("¡Nodo aislado! Reconectando a los pivotes...")
+			slog.Warn("¡Nodo aislado! Reconectando a los pivotes...")
 			for _, addr := range n.Pivots {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				info, _ := peer.AddrInfoFromString(addr)
 				if err := n.Host.Connect(ctx, *info); err != nil {
-					log.Error("Fallo reconexión al pivote:", err)
+					slog.Error("Fallo reconexión al pivote:", "error", err)
 				} else {
-					log.Info("Conexión exitosa al pivote:", addr)
+					slog.Info("Conexión exitosa al pivote:", "direccion", addr)
 					n.Authenticar(ctx, priv, info.ID)
 				}
 				cancel()
 			}
 		}
-		time.Sleep(30 * time.Second)
+		time.Sleep(120 * time.Second)
 	}
 }

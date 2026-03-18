@@ -1,4 +1,4 @@
-#  ![Veredarii red de interoperabilidad](logo.png)
+#  ![Veredarii red de interoperabilidad]
 
 ##  Instalación de Veredarii
 
