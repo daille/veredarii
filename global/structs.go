@@ -29,6 +29,7 @@ type ResourcesType struct {
 	API        []ResourceType `json:"API"`
 	FILE       []ResourceType `json:"FILE"`
 	DATASOURCE []ResourceType `json:"DATA_SOURCE"`
+	TOPIC      []ResourceType `json:"TOPIC"`
 }
 
 type ResourceType struct {

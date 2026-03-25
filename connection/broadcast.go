@@ -25,6 +25,7 @@ SOFTWARE.
 */
 import (
 	global "Veredarii/global"
+	pluginmanager "Veredarii/pluginManager"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -49,6 +50,52 @@ func (n *Network) InitBroadcast() {
 		slog.Error("Error al suscribirse al topic", "error", err)
 	}
 	go n.listenerPeers(subPeer)
+
+	for _, topic := range n.RemoteResources.TOPIC {
+		subTopic, err := n.PS.Join(topic.Name)
+		if err != nil {
+			slog.Error("Error al unirse al topic", "error", err)
+			continue
+		}
+		sub, err := subTopic.Subscribe()
+		if err != nil {
+			slog.Error("Error al suscribirse al topic", "error", err)
+			continue
+		}
+		go n.listenerTopic(sub, topic)
+	}
+}
+
+func (n *Network) listenerTopic(sub *pubsub.Subscription, topic global.ResourceType) {
+	slog.Debug("Iniciando listener", "name", topic.Name)
+	preKey := sha256.Sum256([]byte(n.SwarmKey))
+	key := preKey[:]
+	for {
+		ctx := context.Background()
+		msg, err := sub.Next(ctx)
+		if err != nil {
+			slog.Error("Error al recibir el mensaje", "error", err)
+			continue
+		}
+		descifrado, err := global.Decrypt(msg.Data, key)
+		if err != nil {
+			slog.Error("Error: No pude descifrar el mensaje o no estoy autorizado.", "error", err)
+			continue
+		}
+
+		if topic.Plugin != "" {
+			fmt.Printf(global.Green("Mensaje recibido de %s: %s\n"), msg.ReceivedFrom, string(descifrado))
+		} else {
+			slog.Debug("Llamando Plugin", "plugin", topic.Plugin)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			bodyBytes, err := pluginmanager.PM.Execute(ctx, topic.Plugin, "handle_topic", descifrado)
+			if err != nil {
+				slog.Error("Error ejecutando plugin: ", "error", err.Error())
+			}
+			slog.Debug("Respuesta del plugin", "valor", string(bodyBytes))
+			cancel()
+		}
+	}
 }
 
 func (n *Network) listenerPeers(subPeer *pubsub.Subscription) {

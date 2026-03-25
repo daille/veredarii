@@ -78,7 +78,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 			return
 		}
 		tps := RBAC.GetTPS(entidad, global.ProtocolAPIProxy, n.Name, msg.Service)
-		slog.Debug("TPS: ", tps)
+		slog.Debug("TPS registrada", "tps", tps)
 		limiter := n.RateLimiter.GetLimiter(entidad, global.ProtocolAPIProxy, tps)
 
 		if !limiter.Allow() {
@@ -111,6 +111,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 
 						if service.Plugin == "" {
 							urlDestino := fmt.Sprintf("%s?%s", service.ResourcePath, req.URL.RawQuery)
+							slog.Debug("Llamando URL Local", "urlDestino: ", urlDestino)
 							u, err := url.Parse(urlDestino)
 							if err != nil {
 								slog.Error("Error parseando url: ", "error", err.Error())
@@ -138,12 +139,14 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 							}
 							resp.Body.Close()
 						} else {
+							slog.Debug("Llamando Plugin", "plugin", service.Plugin)
 							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 							defer cancel()
-							bodyBytes, err = pluginmanager.PM.Execute(ctx, service.Plugin, msg.Payload)
+							bodyBytes, err = pluginmanager.PM.Execute(ctx, service.Plugin, "handle_request", msg.Payload)
 							if err != nil {
 								slog.Error("Error ejecutando plugin: ", "error", err.Error())
 							}
+							slog.Debug("Respuesta del plugin", "valor", string(bodyBytes))
 						}
 
 						response := &global.Envelop{

@@ -31,6 +31,7 @@ import (
 	"Veredarii/localinterface"
 	pluginmanager "Veredarii/pluginManager"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,6 +40,7 @@ import (
 	"syscall"
 	"time"
 
+	extism "github.com/extism/go-sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -91,7 +93,20 @@ func IniciaVeredarii() {
 	go connection.NM.StartProcess()
 
 	ctx := context.Background()
-	pluginmanager.PM = pluginmanager.NewPluginManager(ctx, nil)
+
+	// 1. Registrar funciones que los plugins pueden llamar
+	dbLookup := pluginmanager.RegisterHostFunc("db_lookup", func(input []byte) ([]byte, error) {
+		var req struct{ Key string }
+		json.Unmarshal(input, &req)
+		value := "valor"
+		return json.Marshal(map[string]string{"value": value})
+	})
+
+	logEvent := pluginmanager.RegisterHostFunc("log_event", func(input []byte) ([]byte, error) {
+		slog.Info("plugin event", "data", string(input))
+		return nil, nil
+	})
+	pluginmanager.PM = pluginmanager.NewPluginManager(ctx, []extism.HostFunction{dbLookup, logEvent})
 	defer pluginmanager.PM.Close()
 	entries, err := os.ReadDir("./plugins")
 	if err != nil {

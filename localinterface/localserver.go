@@ -89,7 +89,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 				} else {
 					body, _ := io.ReadAll(r.Body)
 
-					resultado, err := pluginmanager.PM.Execute(r.Context(), service.Plugin, body)
+					resultado, err := pluginmanager.PM.Execute(r.Context(), service.Plugin, "handle_request", body)
 					if err != nil {
 						http.Error(w, err.Error(), 500)
 						return
