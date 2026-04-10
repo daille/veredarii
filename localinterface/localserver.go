@@ -40,10 +40,12 @@ import (
 
 	configuration "Veredarii/configuration"
 	"Veredarii/connection"
+	handler "Veredarii/localinterface/handler"
 	pluginmanager "Veredarii/pluginManager"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
@@ -52,6 +54,11 @@ type LocalServer struct {
 }
 
 func Start() {
+	cert, err := bootstrapTLS()
+	if err != nil {
+		log.Fatalf("[TLS] Error fatal: %v", err)
+	}
+
 	LocalServer := &LocalServer{
 		Router: chi.NewRouter(),
 	}
@@ -59,10 +66,15 @@ func Start() {
 
 	go func() {
 		server := &http.Server{
-			Addr:    ":" + configuration.CM.GetConfig().LocalInterface.Server.Port,
-			Handler: LocalServer.Router,
+			Addr:              ":" + configuration.CM.GetConfig().LocalInterface.Server.Port,
+			Handler:           LocalServer.Router,
+			TLSConfig:         tlsConfig(cert),
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
 		}
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.ListenAndServeTLS("", ""); err != nil {
 			log.Printf("Error server HTTP: %v", err)
 		}
 	}()
@@ -72,6 +84,44 @@ func Start() {
 func (n *LocalServer) setupRouter() (iplocal string) {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
+
+	r.Route("/api", func(r chi.Router) {
+		// — Red —
+		r.Route("/network", func(r chi.Router) {
+			r.Get("/config", handler.GetNetworkConfig)
+			r.Put("/config", handler.PutNetworkConfig)
+			r.Get("/status", handler.GetNetworkStatus)
+			r.Get("/metrics", handler.GetNetworkMetrics) // ?period=1h|6h|24h|7d
+			r.Get("/members", handler.GetNetworkMembers)
+			r.Get("/members/{id}", handler.GetNetworkMember)
+		})
+
+		// — Recursos —
+		r.Route("/resources", func(r chi.Router) {
+			r.Get("/provided", handler.GetProvidedResources)
+			r.Post("/provided", handler.CreateProvidedResource)
+			r.Get("/provided/{id}", handler.GetProvidedResource)
+			r.Put("/provided/{id}", handler.UpdateProvidedResource)
+			r.Patch("/provided/{id}", handler.ToggleProvidedResource) // { "enabled": true/false }
+			r.Delete("/provided/{id}", handler.DeleteProvidedResource)
+
+			r.Get("/external", handler.GetExternalResources)
+			r.Get("/search", handler.SearchResources) // ?q=...&type=...&country=...
+		})
+
+		// — Mapa —
+		r.Route("/map", func(r chi.Router) {
+			r.Get("/topology", handler.GetTopology)
+			r.Get("/flows", handler.GetFlows) // ?period=1h|24h|7d
+		})
+	})
 
 	for _, network := range configuration.CM.GetConfig().Networks {
 		// Rutas a tratar como proxy
@@ -88,13 +138,11 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 					w.Write(respuesta)
 				} else {
 					body, _ := io.ReadAll(r.Body)
-
 					resultado, err := pluginmanager.PM.Execute(r.Context(), service.Plugin, "handle_request", body)
 					if err != nil {
 						http.Error(w, err.Error(), 500)
 						return
 					}
-
 					w.Header().Set("Content-Type", "application/json")
 					w.Write(resultado)
 				}

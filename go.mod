@@ -9,6 +9,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/extism/go-sdk v1.7.1
 	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/cors v1.2.2
 	github.com/google/uuid v1.6.0
 	github.com/ipfs/boxo v0.36.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -20,7 +21,6 @@ require (
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/planetscale/vtprotobuf v0.6.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.47.0

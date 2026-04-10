@@ -44,8 +44,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var startCmd = &cobra.Command{
-	Use:   "start",
+var runCmd = &cobra.Command{
+	Use:   "run",
 	Short: "Ejecuta la aplicación Veredarii",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -58,11 +58,11 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(runCmd)
 }
 
 func IniciaVeredarii() {
-	slog := slog.With(slog.String("comando", "start"))
+	slog := slog.With(slog.String("comando", "run"))
 
 	fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
 	fmt.Printf("│%s%-29s│\n", "                                Veredarii  ", "")
