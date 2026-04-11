@@ -24,14 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"io"
-	"math/big"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"time"
@@ -93,6 +86,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		r.Use(SecurityAPIMiddleware)
 		// — Red —
 		r.Route("/network", func(r chi.Router) {
 			r.Get("/config", handler.GetNetworkConfig)
@@ -188,7 +182,29 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 	return iplocal
 }
 
-func generateSelfSignedCert(iplocal string) (tls.Certificate, error) {
+func SecurityAPIMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Verificar que el host sea local
+		// Nota: r.Host puede ser "localhost:8080" o "127.0.0.1:8080"
+		isLocal := r.Host == "localhost:8080" || r.Host == "127.0.0.1:8080"
+
+		if !isLocal {
+			http.Error(w, "Acceso denegado: Solo conexiones locales permitidas.", http.StatusForbidden)
+			return
+		}
+
+		// 2. Opcional: Verificar el Header Origin si viene de un navegador
+		origin := r.Header.Get("Origin")
+		if origin != "" && origin != "http://localhost:3000" { // puerto de tu front
+			http.Error(w, "Origin no autorizado", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+/*func generateSelfSignedCert(iplocal string) (tls.Certificate, error) {
 	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
@@ -206,4 +222,4 @@ func generateSelfSignedCert(iplocal string) (tls.Certificate, error) {
 		Certificate: [][]byte{derBytes},
 		PrivateKey:  priv,
 	}, nil
-}
+}*/

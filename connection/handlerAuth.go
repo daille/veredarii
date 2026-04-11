@@ -271,8 +271,19 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 	return rec, nil
 }
 
-func esReplay(firma []byte) bool {
+/*func esReplay(firma []byte) bool {
 	cache.Lock()
 	defer cache.Unlock()
+	return false
+}*/
+
+func esReplay(firma []byte) bool {
+	key := hex.EncodeToString(firma)
+	cache.Lock()
+	defer cache.Unlock()
+	if _, seen := cache.firmas[key]; seen {
+		return true
+	}
+	cache.firmas[key] = time.Now()
 	return false
 }

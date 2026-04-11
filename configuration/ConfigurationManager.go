@@ -75,6 +75,9 @@ func (cm *ConfigurationManager) LoadConfig() error {
 		}
 	}
 
+	// Load environment variables
+	cm.Config.Networks[0].NetworkKey = os.Getenv("NETWORK_KEY")
+
 	return nil
 }
 

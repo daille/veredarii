@@ -218,6 +218,10 @@ func readDelimited(r io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	const maxMessageSize = 32 * 1024 * 1024 // 32 MB
+	if size > maxMessageSize {
+		return nil, fmt.Errorf("mensaje demasiado grande: %d bytes", size)
+	}
 	data := make([]byte, size)
 	if _, err := io.ReadFull(br, data); err != nil {
 		return nil, err
