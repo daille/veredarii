@@ -93,8 +93,9 @@ type Network struct {
 }
 
 type StreamSession struct {
-	stream network.Stream
 	timer  *time.Timer
+	Target peer.ID
+	Proto  string
 }
 
 type PeerType struct {
@@ -296,10 +297,7 @@ func (n *Network) Connect() {
 	select {}
 }
 
-func (n *Network) getStream(proto string, service string) (network.Stream, error) {
-	n.MutexStreams.Lock()
-	defer n.MutexStreams.Unlock()
-
+func (n *Network) getStream(proto string, service string) (*StreamSession, error) {
 	if sess, ok := n.Streams[proto][service]; ok {
 		if !sess.timer.Stop() {
 			select {
@@ -308,36 +306,32 @@ func (n *Network) getStream(proto string, service string) (network.Stream, error
 			}
 		}
 		sess.timer.Reset(Timeout)
-		return sess.stream, nil
+		return &sess, nil
 	}
+	n.MutexStreams.Lock()
+	defer n.MutexStreams.Unlock()
 
 	target := n.BuscarServicio(context.Background(), service)
 	if target == nil {
 		return nil, errors.New("Servicio no encontrado")
 	}
 
-	slog.Debug("Abriendo Stream", "peer", target.ID, "protocolo", proto, "servicio", service)
-	s, err := n.Host.NewStream(context.Background(), target.ID, protocol.ID(proto))
-	if err != nil {
-		return nil, err
-	}
-
 	sess := StreamSession{
-		stream: s,
 		timer:  time.NewTimer(Timeout),
+		Target: target.ID,
+		Proto:  proto,
 	}
 
-	go func(service string, st network.Stream, t *time.Timer) {
+	go func(service string, t *time.Timer) {
 		<-t.C
 		n.MutexStreams.Lock()
-		slog.Debug("Timeout: Cerrando stream inactivo", "servicio", service)
-		st.Close()
+		slog.Debug("Timeout: Cerrando registro de servicio no ocupado", "servicio", service)
 		delete(n.Streams[proto], service)
 		n.MutexStreams.Unlock()
-	}(service, s, sess.timer)
+	}(service, sess.timer)
 
 	n.Streams[proto][service] = sess
-	return s, nil
+	return &sess, nil
 }
 
 func (n *Network) MonitorConnections(priv crypto.PrivKey) {

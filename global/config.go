@@ -40,7 +40,8 @@ type IdentityType struct {
 
 type LocalInterfaceType struct {
 	Server struct {
-		Port string `json:"port"`
+		Port string   `json:"port"`
+		Host []string `json:"host"`
 	} `json:"server"`
 }
 

@@ -49,11 +49,36 @@ import (
 	"github.com/libp2p/go-libp2p/core/record"
 )
 
+const nonceTTL = time.Hour
+const nonceCleanupInterval = 10 * time.Minute
+
 var cache = NonceCache{firmas: make(map[string]time.Time)}
+
+func init() {
+	cache.startCleanup()
+}
 
 type NonceCache struct {
 	sync.RWMutex
 	firmas map[string]time.Time
+}
+
+// startCleanup lanza una goroutine que expira entradas más antiguas que nonceTTL.
+func (c *NonceCache) startCleanup() {
+	go func() {
+		ticker := time.NewTicker(nonceCleanupInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			expireBefore := time.Now().Add(-nonceTTL)
+			c.Lock()
+			for k, ts := range c.firmas {
+				if ts.Before(expireBefore) {
+					delete(c.firmas, k)
+				}
+			}
+			c.Unlock()
+		}
+	}()
 }
 
 type EnvioMasterEntities struct {

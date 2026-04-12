@@ -44,10 +44,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
 func (n *Network) handleAPIProxyStream(s network.Stream) {
+	slog.Debug(">>>> handleAPIProxyStream", "stream", s.ID())
 	defer s.Close()
 	remotePeer := s.Conn().RemotePeer()
 	PID, err := peer.Decode(remotePeer.String())
@@ -75,6 +77,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 
 		if err := proto.Unmarshal(data, msg); err != nil {
 			slog.Error("Error unmarshal protobuf", "error", err.Error())
+			slog.Error("Error", "data", string(data))
 			return
 		}
 		tps := RBAC.GetTPS(entidad, global.ProtocolAPIProxy, n.Name, msg.Service)
@@ -172,11 +175,16 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 }
 
 func (n *Network) Send(service string, payload []byte) []byte {
-	s, err := n.getStream(global.ProtocolAPIProxy, service)
+	stream, err := n.getStream(global.ProtocolAPIProxy, service)
 	if err != nil {
 		slog.Error("Error obteniendo stream", "error", err.Error())
 		return nil
 	}
+	s, err := n.Host.NewStream(context.Background(), stream.Target, protocol.ID(stream.Proto))
+	if err != nil {
+		return nil
+	}
+	defer s.Close()
 
 	msg := &global.Envelop{
 		Id:      uuid.New().String(),
@@ -187,18 +195,20 @@ func (n *Network) Send(service string, payload []byte) []byte {
 
 	_, err = writeDelimited(s, data)
 	if err != nil {
+		slog.Error("error escribiendo respuesta", "error", err)
 		n.MutexStreams.Lock()
 		delete(n.Streams[global.ProtocolAPIProxy], service)
 		n.MutexStreams.Unlock()
 		s.Reset()
 		return nil
 	}
-
 	resData, err := readDelimited(s)
 	if err == nil {
 		res := &global.Envelop{}
 		proto.Unmarshal(resData, res)
 		return res.Payload
+	} else {
+		slog.Error("error leyendo respuesta", "error", err)
 	}
 	return nil
 }
