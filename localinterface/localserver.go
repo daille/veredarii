@@ -85,6 +85,12 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 		MaxAge:           300,
 	}))
 
+	fs := http.StripPrefix("/ui", http.FileServer(http.Dir("./ui")))
+	r.Route("/ui", func(r1 chi.Router) {
+		//r1.Use(SecurityAPIMiddleware)
+		r1.Handle("/*", fs)
+	})
+
 	r.Route("/api", func(r chi.Router) {
 		r.Use(SecurityAPIMiddleware)
 		// — Red —

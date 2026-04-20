@@ -343,11 +343,18 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 			for _, addr := range n.Pivots {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				info, _ := peer.AddrInfoFromString(addr)
-				if err := n.Host.Connect(ctx, *info); err != nil {
-					slog.Error("Fallo reconexión al pivote:", "error", err)
-				} else {
-					slog.Info("Conexión exitosa al pivote:", "direccion", addr)
-					n.Authenticar(ctx, priv, info.ID)
+				if n.Host != nil {
+					if info == nil {
+						slog.Warn("Se intentó conectar a un pivote con AddrInfo nulo")
+						continue
+					}
+					fmt.Println("HOST: ", n.Host)
+					if err := n.Host.Connect(ctx, *info); err != nil {
+						slog.Error("Fallo reconexión al pivote:", "error", err)
+					} else {
+						slog.Info("Conexión exitosa al pivote:", "direccion", addr)
+						n.Authenticar(ctx, priv, info.ID)
+					}
 				}
 				cancel()
 			}

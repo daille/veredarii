@@ -29,6 +29,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"syscall"
 )
 
 type Mensaje struct {
@@ -64,15 +65,85 @@ func SocketListener() {
 		go func(c net.Conn) {
 			defer c.Close()
 
-			var m Mensaje
+			// --- BLOQUE DE SEGURIDAD ---
+			// 2. Verificar que el proceso que conecta sea el mismo usuario (UID)
+			unixConn := c.(*net.UnixConn)
+			rawConn, err := unixConn.SyscallConn()
+			if err != nil {
+				return
+			}
+
+			var isAuthorized bool
+			rawConn.Control(func(fd uintptr) {
+				// Obtener credenciales del cliente (Linux)
+				creds, err := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+				if err == nil {
+					// Solo permitimos si el que conecta tiene nuestro mismo UID
+					if int(creds.Uid) == os.Getuid() {
+						isAuthorized = true
+					}
+				}
+			})
+
+			if !isAuthorized {
+				fmt.Println("Conexión rechazada: Usuario no autorizado")
+				return
+			}
+			// --- FIN BLOQUE DE SEGURIDAD ---
+
+			var m, respuesta Mensaje
 			decoder := gob.NewDecoder(c)
 			if err := decoder.Decode(&m); err == nil {
 				fmt.Printf("Recibido: %+v\n", m)
 
+				switch m.Entrada[0] {
+				case "pivot":
+					switch m.Entrada[1] {
+					case "add":
+						respuesta = pivotAdd(m.Entrada[2], m.Entrada[3])
+					case "remove":
+						respuesta = pivotRemove(m.Entrada[2], m.Entrada[3])
+					default:
+						respuesta = Mensaje{Salida: "Comando no reconocido"}
+					}
+				}
+
 				encoder := gob.NewEncoder(c)
-				respuesta := Mensaje{Salida: "Recibido correctamente"}
 				encoder.Encode(respuesta)
 			}
 		}(conn)
 	}
+}
+
+func socketClient(msg Mensaje) Mensaje {
+	socketPath := "./veredarii.sock"
+	if runtime.GOOS == "windows" {
+		socketPath = `veredarii.sock`
+	}
+
+	// 1. Conectar al socket Unix
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		fmt.Println("Error al conectar con la aplicacion en ejecución")
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	// 3. Enviar el mensaje (Codificar)
+	encoder := gob.NewEncoder(conn)
+	if err := encoder.Encode(msg); err != nil {
+		fmt.Println("Error al codificar mensaje:", err)
+		return Mensaje{}
+	}
+	fmt.Printf("Enviado: %+v\n", msg)
+
+	// 4. Recibir la respuesta (Decodificar)
+	var respuesta Mensaje
+	decoder := gob.NewDecoder(conn)
+	if err := decoder.Decode(&respuesta); err != nil {
+		fmt.Println("Error al decodificar respuesta:", err)
+		return Mensaje{}
+	}
+
+	return respuesta
 }

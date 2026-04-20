@@ -75,6 +75,7 @@ func IniciaVeredarii() {
 		slog.Error("Error al crear la base de datos", "error", err.Error())
 	}
 	defer localdatabase.DB.Close()
+	go SocketListener()
 
 	slog.Debug("Cargando configuracion...")
 	configuration.CM = configuration.NewConfigurationManager()

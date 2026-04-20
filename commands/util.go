@@ -47,9 +47,26 @@ var databaseCmd = &cobra.Command{
 	},
 }
 
+var testCmd = &cobra.Command{
+	Use:   "test",
+	Short: "Operaciones de test",
+	Run: func(cmd *cobra.Command, args []string) {
+		holaSocket()
+	},
+}
+
 func init() {
 	utilCmd.AddCommand(databaseCmd)
+	utilCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(utilCmd)
+}
+
+func holaSocket() {
+	msg := Mensaje{
+		Entrada: []string{"hola", "veredarii", "test"},
+	}
+	respuesta := socketClient(msg)
+	fmt.Println(respuesta)
 }
 
 func inspectLocalDB2(dbPath string) error {

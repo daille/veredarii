@@ -88,8 +88,103 @@ var pivotLsCmd = &cobra.Command{
 	},
 }
 
+var pivotAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Agrega un pivote",
+	Long:  `Agrega un pivote`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network")
+			return
+		}
+		if pivot == "" {
+			fmt.Println("❌ Error: Se requieren las flags --pivot")
+			return
+		}
+
+		msg := Mensaje{
+			Entrada: []string{"pivot", "add", network, pivot},
+		}
+		respuesta := socketClient(msg)
+		fmt.Println(respuesta)
+	},
+}
+
+var pivotRemoveCmd = &cobra.Command{
+	Use:   "remove",
+	Short: "Remueve un pivote",
+	Long:  `Remueve un pivote`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network")
+			return
+		}
+		if pivot == "" {
+			fmt.Println("❌ Error: Se requieren las flags --pivot")
+			return
+		}
+
+		msg := Mensaje{
+			Entrada: []string{"pivot", "remove", network, pivot},
+		}
+		respuesta := socketClient(msg)
+		fmt.Println(respuesta)
+	},
+}
+
+var pivot string
+
 func init() {
 	pivotLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 	pivotCmd.AddCommand(pivotLsCmd)
+	pivotAddCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	pivotAddCmd.PersistentFlags().StringVarP(&pivot, "pivot", "p", "", "Ruta del pivote (requerido)")
+	pivotCmd.AddCommand(pivotAddCmd)
+	pivotRemoveCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	pivotRemoveCmd.PersistentFlags().StringVarP(&pivot, "pivot", "p", "", "Ruta del pivote (requerido)")
+	pivotCmd.AddCommand(pivotRemoveCmd)
 	rootCmd.AddCommand(pivotCmd)
+}
+
+func pivotAdd(network, pivot string) Mensaje {
+	configuration.CM = configuration.NewConfigurationManager()
+	err := configuration.CM.LoadConfig()
+	if err != nil {
+		return Mensaje{Salida: "Error cargando configuracion:" + err.Error()}
+	}
+	for idx, nn := range configuration.CM.Config.Networks {
+		if nn.Name == network {
+			configuration.CM.Config.Networks[idx].Pivots = append(configuration.CM.Config.Networks[idx].Pivots, pivot)
+			break
+		}
+	}
+	err = configuration.CM.Save()
+	if err != nil {
+		return Mensaje{Salida: "Error guardando configuracion:" + err.Error()}
+	}
+	return Mensaje{Salida: "Pivote agregado correctamente"}
+}
+
+func pivotRemove(network, pivot string) Mensaje {
+	configuration.CM = configuration.NewConfigurationManager()
+	err := configuration.CM.LoadConfig()
+	if err != nil {
+		return Mensaje{Salida: "Error cargando configuracion:" + err.Error()}
+	}
+	for idx, nn := range configuration.CM.Config.Networks {
+		if nn.Name == network {
+			for i, p := range nn.Pivots {
+				if p == pivot {
+					configuration.CM.Config.Networks[idx].Pivots = append(configuration.CM.Config.Networks[idx].Pivots[:i], configuration.CM.Config.Networks[idx].Pivots[i+1:]...)
+					break
+				}
+			}
+			break
+		}
+	}
+	err = configuration.CM.Save()
+	if err != nil {
+		return Mensaje{Salida: "Error guardando configuracion:" + err.Error()}
+	}
+	return Mensaje{Salida: "Pivote removido correctamente"}
 }
