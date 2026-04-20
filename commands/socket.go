@@ -106,6 +106,8 @@ func SocketListener() {
 					default:
 						respuesta = Mensaje{Salida: "Comando no reconocido"}
 					}
+				case "connections":
+					respuesta = listPeers()
 				}
 
 				encoder := gob.NewEncoder(c)

@@ -362,3 +362,21 @@ func (n *Network) MonitorConnections(priv crypto.PrivKey) {
 		time.Sleep(120 * time.Second)
 	}
 }
+
+func (n *Network) ListPeers() []string {
+	retorno := []string{}
+	for _, peerID := range n.Host.Network().Peers() {
+		conns := n.Host.Network().ConnsToPeer(peerID)
+
+		for _, conn := range conns {
+			/*stat := conn.Stat()
+			direction := "ENTRANTE (Inbound)"
+			if stat.Direction == network.DirOutbound {
+				direction = "SALIENTE (Outbound)"
+			}*/
+			retorno = append(retorno, fmt.Sprintf("%s | %s\n",
+				peerID, conn.RemoteMultiaddr()))
+		}
+	}
+	return retorno
+}

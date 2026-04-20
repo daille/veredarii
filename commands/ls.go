@@ -25,8 +25,10 @@ SOFTWARE.
 */
 import (
 	"Veredarii/configuration"
+	"Veredarii/connection"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -74,6 +76,59 @@ var lsCmd = &cobra.Command{
 	},
 }
 
+var lsPeersCmd = &cobra.Command{
+	Use:   "connections",
+	Short: "Lista las conexiones",
+	Long:  `Lista las conexiones`,
+	Run: func(cmd *cobra.Command, args []string) {
+		msg := Mensaje{
+			Entrada: []string{"connections"},
+		}
+		respuesta := socketClient(msg)
+		fmt.Println(respuesta)
+
+		resultado := [][]string{}
+		for i, p := range strings.Split(respuesta.Salida, "\n") {
+			if p != "" {
+				resultado = append(resultado, []string{strconv.Itoa(i), p})
+			}
+		}
+
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(teal)).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				switch {
+				case row == table.HeaderRow:
+					return headerStyle
+				case row%2 == 0:
+					return evenRowStyle
+				default:
+					return oddRowStyle
+				}
+			}).
+			Headers("", "Conexión").
+			Rows(resultado...)
+
+		if len(resultado) > 0 {
+			fmt.Println(t.String())
+		} else {
+			fmt.Println("No existen pivotes")
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(lsPeersCmd)
+}
+
+func listPeers() Mensaje {
+	retorno := Mensaje{Salida: ""}
+	for _, network := range connection.NM.Networks {
+		for _, peer := range network.ListPeers() {
+			retorno.Salida += peer + "\n"
+		}
+	}
+	return retorno
 }
