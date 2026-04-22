@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/configuration"
 	"encoding/gob"
 	"fmt"
 	"net"
@@ -94,15 +95,36 @@ func SocketListener() {
 			var m, respuesta Mensaje
 			decoder := gob.NewDecoder(c)
 			if err := decoder.Decode(&m); err == nil {
-				fmt.Printf("Recibido: %+v\n", m)
-
 				switch m.Entrada[0] {
+				case "set":
+					configuration.DefaultNetwork = m.Entrada[1]
+					respuesta = Mensaje{Salida: "Red fijada a: " + m.Entrada[1]}
+				case "get":
+					respuesta = Mensaje{Salida: configuration.DefaultNetwork}
 				case "pivot":
 					switch m.Entrada[1] {
 					case "add":
 						respuesta = pivotAdd(m.Entrada[2], m.Entrada[3])
 					case "remove":
 						respuesta = pivotRemove(m.Entrada[2], m.Entrada[3])
+					default:
+						respuesta = Mensaje{Salida: "Comando no reconocido"}
+					}
+				case "resource":
+					switch m.Entrada[1] {
+					case "add":
+						respuesta = resourceAdd(m.Entrada[2], m.Entrada[3], m.Entrada[4], m.Entrada[5])
+					case "remove":
+						respuesta = resourceRemove(m.Entrada[2], m.Entrada[3], m.Entrada[4])
+					default:
+						respuesta = Mensaje{Salida: "Comando no reconocido"}
+					}
+				case "external":
+					switch m.Entrada[1] {
+					case "add":
+						respuesta = resourceExternalAdd(m.Entrada[2], m.Entrada[3], m.Entrada[4], m.Entrada[5])
+					case "remove":
+						respuesta = resourceExternalRemove(m.Entrada[2], m.Entrada[3], m.Entrada[4])
 					default:
 						respuesta = Mensaje{Salida: "Comando no reconocido"}
 					}
@@ -123,23 +145,17 @@ func socketClient(msg Mensaje) Mensaje {
 		socketPath = `veredarii.sock`
 	}
 
-	// 1. Conectar al socket Unix
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
-		fmt.Println("Error al conectar con la aplicacion en ejecución")
-		os.Exit(1)
+		return Mensaje{Salida: ""}
 	}
 	defer conn.Close()
 
-	// 3. Enviar el mensaje (Codificar)
 	encoder := gob.NewEncoder(conn)
 	if err := encoder.Encode(msg); err != nil {
 		fmt.Println("Error al codificar mensaje:", err)
 		return Mensaje{}
 	}
-	fmt.Printf("Enviado: %+v\n", msg)
-
-	// 4. Recibir la respuesta (Decodificar)
 	var respuesta Mensaje
 	decoder := gob.NewDecoder(conn)
 	if err := decoder.Decode(&respuesta); err != nil {

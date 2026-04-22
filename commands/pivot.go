@@ -44,46 +44,46 @@ var pivotLsCmd = &cobra.Command{
 	Short: "Lista las redes",
 	Long:  `Lista los redes`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if network == "" {
-			fmt.Println("❌ Error: Se requieren las flags --network")
-			return
-		}
-
-		configuration.CM = configuration.NewConfigurationManager()
-		err := configuration.CM.LoadConfig()
-		if err != nil {
-			fmt.Println("Error cargando configuracion:", "error", err.Error())
-			return
-		}
-		resultado := [][]string{}
-		for _, n := range configuration.CM.Config.Networks {
-			if n.Name == network {
-				for i, p := range n.Pivots {
-					resultado = append(resultado, []string{strconv.Itoa(i), p})
+		if network, ok := GetNetwork(); ok {
+			configuration.CM = configuration.NewConfigurationManager()
+			err := configuration.CM.LoadConfig()
+			if err != nil {
+				fmt.Println("Error cargando configuracion:", "error", err.Error())
+				return
+			}
+			resultado := [][]string{}
+			for _, n := range configuration.CM.Config.Networks {
+				if n.Name == network {
+					for i, p := range n.Pivots {
+						resultado = append(resultado, []string{strconv.Itoa(i), p})
+					}
 				}
 			}
-		}
 
-		t := table.New().
-			Border(lipgloss.NormalBorder()).
-			BorderStyle(lipgloss.NewStyle().Foreground(teal)).
-			StyleFunc(func(row, col int) lipgloss.Style {
-				switch {
-				case row == table.HeaderRow:
-					return headerStyle
-				case row%2 == 0:
-					return evenRowStyle
-				default:
-					return oddRowStyle
-				}
-			}).
-			Headers("", "Ruta del Pivote").
-			Rows(resultado...)
+			t := table.New().
+				Border(lipgloss.NormalBorder()).
+				BorderStyle(lipgloss.NewStyle().Foreground(teal)).
+				StyleFunc(func(row, col int) lipgloss.Style {
+					switch {
+					case row == table.HeaderRow:
+						return headerStyle
+					case row%2 == 0:
+						return evenRowStyle
+					default:
+						return oddRowStyle
+					}
+				}).
+				Headers("", "Ruta del Pivote").
+				Rows(resultado...)
 
-		if len(resultado) > 0 {
-			fmt.Println(t.String())
+			if len(resultado) > 0 {
+				fmt.Println(t.String())
+			} else {
+				fmt.Println("No existen pivotes")
+			}
 		} else {
-			fmt.Println("No existen pivotes")
+			fmt.Println("❌ Error: Se requieren las flags --network")
+			return
 		}
 	},
 }
@@ -93,20 +93,21 @@ var pivotAddCmd = &cobra.Command{
 	Short: "Agrega un pivote",
 	Long:  `Agrega un pivote`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if network == "" {
+		if network, ok := GetNetwork(); ok {
+			if pivot == "" {
+				fmt.Println("❌ Error: Se requieren las flags --pivot")
+				return
+			}
+
+			msg := Mensaje{
+				Entrada: []string{"pivot", "add", network, pivot},
+			}
+			respuesta := socketClient(msg)
+			fmt.Println(respuesta)
+		} else {
 			fmt.Println("❌ Error: Se requieren las flags --network")
 			return
 		}
-		if pivot == "" {
-			fmt.Println("❌ Error: Se requieren las flags --pivot")
-			return
-		}
-
-		msg := Mensaje{
-			Entrada: []string{"pivot", "add", network, pivot},
-		}
-		respuesta := socketClient(msg)
-		fmt.Println(respuesta)
 	},
 }
 
@@ -115,20 +116,21 @@ var pivotRemoveCmd = &cobra.Command{
 	Short: "Remueve un pivote",
 	Long:  `Remueve un pivote`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if network == "" {
+		if network, ok := GetNetwork(); ok {
+			if pivot == "" {
+				fmt.Println("❌ Error: Se requieren las flags --pivot")
+				return
+			}
+
+			msg := Mensaje{
+				Entrada: []string{"pivot", "remove", network, pivot},
+			}
+			respuesta := socketClient(msg)
+			fmt.Println(respuesta)
+		} else {
 			fmt.Println("❌ Error: Se requieren las flags --network")
 			return
 		}
-		if pivot == "" {
-			fmt.Println("❌ Error: Se requieren las flags --pivot")
-			return
-		}
-
-		msg := Mensaje{
-			Entrada: []string{"pivot", "remove", network, pivot},
-		}
-		respuesta := socketClient(msg)
-		fmt.Println(respuesta)
 	},
 }
 

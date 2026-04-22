@@ -1,5 +1,8 @@
 [OK] Veredarii version
-[OK] Veredarii start
+[OK] Veredarii run
+[OK] Veredarii connections
+---- Veredarii set --network <name>
+---- Veredarii get 
 
 [OK] Veredarii create --network <name> --entity <entityName> --port <port>
 [OK] Veredarii ls
@@ -7,13 +10,21 @@
 [OK] Veredarii join   --network <name> --entity <entityName> --invitation <invitation.vni> --inviter <entityName> --key <key>
 
 [OK] Veredarii pivot ls --network <name>
-Veredarii pivot add
-Veredarii pivot remove
+[OK] Veredarii pivot add --network <name> --pivot <pivot>
+[OK] Veredarii pivot remove --network <name> --pivot <pivot>
                   
 [OK] Veredarii entity ls --network <name>
-Veredarii entity block
-Veredarii entity unblock
+---- Veredarii entity block --network <name> --entity <entityName>
+---- Veredarii entity unblock --network <name> --entity <entityName>
                   
 [OK] Veredarii resources ls               
-Veredarii resources add    --type <type> --resource <resource> --local <localpath> --handler  <file.wasm>
-Veredarii resources remove
+[OK] Veredarii resources add    --network <name> --type <type> --resource <resource> --local <localpath> --handler  <file.wasm>
+[OK] Veredarii resources remove --network <name> --type <type> --resource <resource>
+
+---- Veredarii resources allow --network <network> --entity <entity> --resource <resource> --tps <tps>
+---- Veredarii resources deny  --network <network> --entity <entity> --resource <resource> --tps <tps>
+
+
+[OK] Veredarii external ls               
+[OK] Veredarii external add    --network <name> --type <type> --resource <resource> --local <localpath> --handler  <file.wasm>
+[OK] Veredarii external remove --network <name> --type <type> --resource <resource>

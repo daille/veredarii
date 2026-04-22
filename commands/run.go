@@ -40,6 +40,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	extism "github.com/extism/go-sdk"
 	"github.com/spf13/cobra"
 )
@@ -63,13 +64,17 @@ func init() {
 
 func IniciaVeredarii() {
 	slog := slog.With(slog.String("comando", "run"))
+	configuration.SetupLoggerTx(configuration.Config{
+		LogPath: "traza.log",
+	})
 
-	fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
+	renderBanner(global.Version)
+	/*fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
 	fmt.Printf("│%s%-29s│\n", "                                Veredarii  ", "")
 	fmt.Println("│                                                                        │")
 	fmt.Printf("│ Versión: %-62s│\n", global.Version)
 	fmt.Print("╰────────────────────────────────────────────────────────────────────────╯\n\n")
-
+	*/
 	_, err := localdatabase.NewDatabase("./veredarii_data")
 	if err != nil {
 		slog.Error("Error al crear la base de datos", "error", err.Error())
@@ -130,4 +135,51 @@ func IniciaVeredarii() {
 	slog.Info("Veredarii en ejecución.")
 
 	<-sigCh
+}
+
+func renderBanner(version string) {
+	const greenColor = lipgloss.Color("#009BDB")
+	const pinkColor = lipgloss.Color("#25AC88")
+	const blackColor = lipgloss.Color("0")
+	const grayColor = lipgloss.Color("235")
+
+	boxStyle := lipgloss.NewStyle().
+		Background(greenColor).
+		Foreground(blackColor).
+		Padding(1, 4).
+		Width(65).
+		Bold(false)
+
+	versionLabelStyle := lipgloss.NewStyle().
+		Background(pinkColor).
+		Foreground(blackColor).
+		Padding(0, 1).
+		Bold(true)
+
+	versionValueStyle := lipgloss.NewStyle().
+		Background(blackColor).
+		Foreground(greenColor).
+		Padding(0, 0)
+
+	text := "VEREDARII \n\n" +
+		"Secure end to end network\n" +
+		"Interoperability layer."
+
+	mainBox := boxStyle.Render(text)
+	label := versionLabelStyle.Render("VERSION")
+	value := versionValueStyle.Render(" v" + version + " ")
+
+	statusLine := lipgloss.JoinHorizontal(lipgloss.Top,
+		label,
+		lipgloss.NewStyle().Background(grayColor).Padding(0, 0).Render(""),
+		value,
+	)
+
+	finalView := lipgloss.JoinVertical(
+		lipgloss.Left,
+		mainBox,
+		lipgloss.NewStyle().MarginTop(0).MarginLeft(0).Render(statusLine),
+	)
+
+	fmt.Println(finalView)
 }

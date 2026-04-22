@@ -80,17 +80,17 @@ func (n *Network) publishServices() {
 	ctx := context.Background()
 	n.RoutingDiscovery = routing.NewRoutingDiscovery(n.DHT)
 	for _, topic := range n.Resources.API {
-		go n.anunciarServicio(ctx, topic.Name)
+		go n.AnunciarServicio(ctx, topic.Name)
 	}
 	for _, topic := range n.Resources.FILE {
-		go n.anunciarServicio(ctx, topic.Name)
+		go n.AnunciarServicio(ctx, topic.Name)
 	}
 	for _, topic := range n.Resources.DATASOURCE {
-		go n.anunciarServicio(ctx, topic.Name)
+		go n.AnunciarServicio(ctx, topic.Name)
 	}
 }
 
-func (n *Network) anunciarServicio(ctx context.Context, serviceName string) {
+func (n *Network) AnunciarServicio(ctx context.Context, serviceName string) {
 	util.Advertise(ctx, n.RoutingDiscovery, serviceName)
 	slog.Info("Anunciando servicio en la DHT", "service", serviceName)
 }

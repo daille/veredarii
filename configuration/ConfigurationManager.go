@@ -27,11 +27,13 @@ import (
 	global "Veredarii/global"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 )
 
 var CM *ConfigurationManager
+var DefaultNetwork string
 
 type ConfigurationManager struct {
 	Config *global.ConfigType
@@ -40,6 +42,7 @@ type ConfigurationManager struct {
 const ConfigFilename = "config.json"
 
 func NewConfigurationManager() *ConfigurationManager {
+	DefaultNetwork = ""
 	return &ConfigurationManager{
 		Config: &global.ConfigType{},
 	}
@@ -118,6 +121,27 @@ func (cm *ConfigurationManager) Save() error {
 	}
 
 	return os.WriteFile(ConfigFilename, buf, 0644)
+}
+
+func (cm *ConfigurationManager) SaveResources(network string) error {
+	fmt.Println("......", network)
+	if network == "" {
+		return errors.New("red no especificada")
+	}
+
+	for idx, nn := range cm.Config.Networks {
+		if nn.Name == network {
+			resourcesPath := "./resources_" + network + ".json"
+			buf, err := json.MarshalIndent(cm.Config.Networks[idx].Resources, "", "    ")
+			if err != nil {
+				slog.Error("Error serializando archivo:", "file", resourcesPath, "error", err)
+				return err
+			}
+			return os.WriteFile(resourcesPath, buf, 0644)
+		}
+	}
+
+	return errors.New("red no encontrada")
 }
 
 func (cm *ConfigurationManager) SaveRemoteResources(network string) error {

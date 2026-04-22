@@ -76,6 +76,36 @@ var lsCmd = &cobra.Command{
 	},
 }
 
+var setCmd = &cobra.Command{
+	Use:   "set",
+	Short: "Fija el nombre de la red",
+	Long:  `Fija el nombre de la red para la ejecucion de futuros comandos`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requieren las flags --network")
+			return
+		}
+		msg := Mensaje{
+			Entrada: []string{"set", network},
+		}
+		respuesta := socketClient(msg)
+		fmt.Println(respuesta.Salida)
+	},
+}
+
+var getCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Obtiene el nombre de la red",
+	Long:  `Obtiene el nombre de la red para la ejecucion de futuros comandos`,
+	Run: func(cmd *cobra.Command, args []string) {
+		msg := Mensaje{
+			Entrada: []string{"get"},
+		}
+		respuesta := socketClient(msg)
+		fmt.Println(respuesta.Salida)
+	},
+}
+
 var lsPeersCmd = &cobra.Command{
 	Use:   "connections",
 	Short: "Lista las conexiones",
@@ -113,13 +143,19 @@ var lsPeersCmd = &cobra.Command{
 		if len(resultado) > 0 {
 			fmt.Println(t.String())
 		} else {
-			fmt.Println("No existen pivotes")
+			fmt.Println("No existen pares conectados")
 		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(lsCmd)
+
+	setCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	rootCmd.AddCommand(setCmd)
+
+	rootCmd.AddCommand(getCmd)
+
 	rootCmd.AddCommand(lsPeersCmd)
 }
 

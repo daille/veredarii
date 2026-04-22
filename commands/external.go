@@ -25,9 +25,7 @@ SOFTWARE.
 */
 import (
 	"Veredarii/configuration"
-	"Veredarii/connection"
 	"Veredarii/global"
-	"context"
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
@@ -35,12 +33,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var resourceCmd = &cobra.Command{
-	Use:   "resource",
-	Short: "Operaciones de recursos",
+var externalCmd = &cobra.Command{
+	Use:   "external",
+	Short: "Operaciones de recursos externos",
 }
 
-var resourceLsCmd = &cobra.Command{
+var externalLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "Lista los recursos remotos",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -51,18 +49,18 @@ var resourceLsCmd = &cobra.Command{
 				fmt.Println("Error cargando configuracion:", "error", err.Error())
 				return
 			}
-			resources := [][]string{}
+			external := [][]string{}
 
 			for _, n := range configuration.CM.Config.Networks {
 				if n.Name == network {
-					showResources(&resources, "API", n.Resources.API)
-					showResources(&resources, "FILE", n.Resources.FILE)
-					showResources(&resources, "DATASOURCE", n.Resources.DATASOURCE)
+					showResources(&external, "API", n.RemoteResources.API)
+					showResources(&external, "FILE", n.RemoteResources.FILE)
+					showResources(&external, "DATASOURCE", n.RemoteResources.DATASOURCE)
 					break
 				}
 			}
 
-			t := table.New().
+			t1 := table.New().
 				Border(lipgloss.NormalBorder()).
 				BorderStyle(lipgloss.NewStyle().Foreground(teal)).
 				StyleFunc(func(row, col int) lipgloss.Style {
@@ -76,36 +74,24 @@ var resourceLsCmd = &cobra.Command{
 					}
 				}).
 				Headers("", "Tipo", "Nombre").
-				Rows(resources...)
+				Rows(external...)
 
-			fmt.Println("Recursos Provistos:")
-			if len(resources) > 0 {
-				fmt.Println(t.String())
+			fmt.Println("Recursos Externos:")
+			if len(external) > 0 {
+				fmt.Println(t1.String())
 			} else {
-				fmt.Println("No existen recursos provistos")
+				fmt.Println("No existen recursos externos")
 			}
 		} else {
 			fmt.Println("❌ Error: Se requiere la flag --network")
 			return
 		}
-
 	},
 }
 
-func showResources(t *[][]string, tipo string, n []global.ResourceType) {
-	start := len(*t) + 1
-	for i, r := range n {
-		*t = append(*t, []string{
-			fmt.Sprintf("%d", i+start),
-			tipo,
-			r.Name,
-		})
-	}
-}
-
-var resourceAddCmd = &cobra.Command{
+var externalAddCmd = &cobra.Command{
 	Use:   "add",
-	Short: "Agrega un recurso remoto",
+	Short: "Agrega un recurso remoto externo",
 	Run: func(cmd *cobra.Command, args []string) {
 		if network, ok := GetNetwork(); ok {
 			if resourceType == "" || resource == "" || local == "" {
@@ -114,7 +100,7 @@ var resourceAddCmd = &cobra.Command{
 			}
 
 			msg := Mensaje{
-				Entrada: []string{"resource", "add", network, resourceType, resource, local},
+				Entrada: []string{"external", "add", network, resourceType, resource, local},
 			}
 			respuesta := socketClient(msg)
 			fmt.Println(respuesta)
@@ -125,9 +111,9 @@ var resourceAddCmd = &cobra.Command{
 	},
 }
 
-var resourceRemoveCmd = &cobra.Command{
+var externalRemoveCmd = &cobra.Command{
 	Use:   "remove",
-	Short: "Elimina un recurso remoto",
+	Short: "Elimina un recurso remoto externo",
 	Run: func(cmd *cobra.Command, args []string) {
 		if network, ok := GetNetwork(); ok {
 			if resourceType == "" || resource == "" {
@@ -136,7 +122,7 @@ var resourceRemoveCmd = &cobra.Command{
 			}
 
 			msg := Mensaje{
-				Entrada: []string{"resource", "remove", network, resourceType, resource},
+				Entrada: []string{"external", "remove", network, resourceType, resource},
 			}
 			respuesta := socketClient(msg)
 			fmt.Println(respuesta)
@@ -148,22 +134,22 @@ var resourceRemoveCmd = &cobra.Command{
 }
 
 func init() {
-	resourceLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	externalLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 
-	resourceAddCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
-	resourceAddCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
-	resourceAddCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
-	resourceAddCmd.PersistentFlags().StringVarP(&local, "local", "l", "", "Ruta local del recurso (requerido)")
+	externalAddCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	externalAddCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
+	externalAddCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
+	externalAddCmd.PersistentFlags().StringVarP(&local, "local", "l", "", "Ruta local del recurso (requerido)")
 
-	resourceRemoveCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
-	resourceRemoveCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
-	resourceRemoveCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
+	externalRemoveCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	externalRemoveCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
+	externalRemoveCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
 
-	resourceCmd.AddCommand(resourceAddCmd, resourceLsCmd, resourceRemoveCmd)
-	rootCmd.AddCommand(resourceCmd)
+	externalCmd.AddCommand(externalAddCmd, externalLsCmd, externalRemoveCmd)
+	rootCmd.AddCommand(externalCmd)
 }
 
-func resourceAdd(network, resourceType, resource, local string) Mensaje {
+func resourceExternalAdd(network, resourceType, resource, local string) Mensaje {
 	configuration.CM = configuration.NewConfigurationManager()
 	configuration.CM.LoadConfig()
 	cfg := configuration.CM.GetConfig()
@@ -178,29 +164,26 @@ func resourceAdd(network, resourceType, resource, local string) Mensaje {
 			switch resourceType {
 			case "API":
 				fmt.Println("Agregando recurso API:", resource)
-				cfg.Networks[idx].Resources.API = append(cfg.Networks[idx].Resources.API, res)
+				cfg.Networks[idx].RemoteResources.API = append(cfg.Networks[idx].RemoteResources.API, res)
 			case "FILE":
 				fmt.Println("Agregando recurso FILE:", resource)
-				cfg.Networks[idx].Resources.FILE = append(cfg.Networks[idx].Resources.FILE, res)
+				cfg.Networks[idx].RemoteResources.FILE = append(cfg.Networks[idx].RemoteResources.FILE, res)
 			case "DATA_SOURCE":
 				fmt.Println("Agregando recurso DATA_SOURCE:", resource)
-				cfg.Networks[idx].Resources.DATASOURCE = append(cfg.Networks[idx].Resources.DATASOURCE, res)
+				cfg.Networks[idx].RemoteResources.DATASOURCE = append(cfg.Networks[idx].RemoteResources.DATASOURCE, res)
 			default:
 				fmt.Println("❌ Error: Tipo de recurso no válido")
 				return Mensaje{Salida: "Error: Tipo de recurso no válido"}
 			}
-			configuration.CM.SaveResources(network)
+			configuration.CM.SaveRemoteResources(network)
 
-			if n, ok := connection.NM.GetNetwork(network); ok {
-				n.AnunciarServicio(context.Background(), resource)
-			}
 			return Mensaje{Salida: "Recurso agregado correctamente"}
 		}
 	}
 	return Mensaje{Salida: "Error: No se encontro la red"}
 }
 
-func resourceRemove(network, resourceType, resource string) Mensaje {
+func resourceExternalRemove(network, resourceType, resource string) Mensaje {
 	configuration.CM = configuration.NewConfigurationManager()
 	configuration.CM.LoadConfig()
 	cfg := configuration.CM.GetConfig()
@@ -210,25 +193,25 @@ func resourceRemove(network, resourceType, resource string) Mensaje {
 			switch resourceType {
 			case "API":
 				fmt.Println("Eliminando recurso API:", resource)
-				for i, r := range cfg.Networks[idx].Resources.API {
+				for i, r := range cfg.Networks[idx].RemoteResources.API {
 					if r.Name == resource {
-						cfg.Networks[idx].Resources.API = append(cfg.Networks[idx].Resources.API[:i], cfg.Networks[idx].Resources.API[i+1:]...)
+						cfg.Networks[idx].RemoteResources.API = append(cfg.Networks[idx].RemoteResources.API[:i], cfg.Networks[idx].RemoteResources.API[i+1:]...)
 						break
 					}
 				}
 			case "FILE":
 				fmt.Println("Eliminando recurso FILE:", resource)
-				for i, r := range cfg.Networks[idx].Resources.FILE {
+				for i, r := range cfg.Networks[idx].RemoteResources.FILE {
 					if r.Name == resource {
-						cfg.Networks[idx].Resources.FILE = append(cfg.Networks[idx].Resources.FILE[:i], cfg.Networks[idx].Resources.FILE[i+1:]...)
+						cfg.Networks[idx].RemoteResources.FILE = append(cfg.Networks[idx].RemoteResources.FILE[:i], cfg.Networks[idx].RemoteResources.FILE[i+1:]...)
 						break
 					}
 				}
 			case "DATA_SOURCE":
 				fmt.Println("Eliminando recurso DATA_SOURCE:", resource)
-				for i, r := range cfg.Networks[idx].Resources.DATASOURCE {
+				for i, r := range cfg.Networks[idx].RemoteResources.DATASOURCE {
 					if r.Name == resource {
-						cfg.Networks[idx].Resources.DATASOURCE = append(cfg.Networks[idx].Resources.DATASOURCE[:i], cfg.Networks[idx].Resources.DATASOURCE[i+1:]...)
+						cfg.Networks[idx].RemoteResources.DATASOURCE = append(cfg.Networks[idx].RemoteResources.DATASOURCE[:i], cfg.Networks[idx].RemoteResources.DATASOURCE[i+1:]...)
 						break
 					}
 				}
@@ -236,7 +219,7 @@ func resourceRemove(network, resourceType, resource string) Mensaje {
 				fmt.Println("❌ Error: Tipo de recurso no válido")
 				return Mensaje{Salida: "Error: Tipo de recurso no válido"}
 			}
-			configuration.CM.SaveResources(network)
+			configuration.CM.SaveRemoteResources(network)
 
 			return Mensaje{Salida: "Recurso eliminado correctamente"}
 		}

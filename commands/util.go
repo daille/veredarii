@@ -61,6 +61,17 @@ func init() {
 	rootCmd.AddCommand(utilCmd)
 }
 
+func GetNetwork() (string, bool) {
+	respuesta := socketClient(Mensaje{Entrada: []string{"get"}})
+	if respuesta.Salida != "" {
+		return respuesta.Salida, true
+	} else if network != "" {
+		return network, true
+	} else {
+		return "", false
+	}
+}
+
 func holaSocket() {
 	msg := Mensaje{
 		Entrada: []string{"hola", "veredarii", "test"},
