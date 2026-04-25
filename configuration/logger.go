@@ -202,10 +202,15 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 }
 
 // ── WriteLog ──────────────────────────────────────────────────────────────────
-
-func WriteLog(msg string, args ...any) {
+func WriteOK(msg string, args ...any) {
 	if l == nil {
 		l = slog.Default()
 	}
 	l.Log(context.Background(), slog.LevelInfo, msg, args...)
+}
+func WriteError(msg string, args ...any) {
+	if l == nil {
+		l = slog.Default()
+	}
+	l.Log(context.Background(), slog.LevelError, msg, args...)
 }

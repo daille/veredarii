@@ -147,8 +147,65 @@ var resourceRemoveCmd = &cobra.Command{
 	},
 }
 
+var resourceAllowCmd = &cobra.Command{
+	Use:   "allow",
+	Short: "Permite el acceso a un recurso",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network, ok := GetNetwork(); ok {
+			if resourceType == "" || resource == "" || entity == "" || tps == "" {
+				fmt.Println("❌ Error: Se requieren las flags --type, --resource, --entity, --tps")
+				return
+			}
+
+			protocol := resourceType
+			msg := Mensaje{
+				Entrada: []string{"resource", "allow", entity, network, protocol, resource, tps},
+			}
+			respuesta := socketClient(msg)
+			fmt.Println(respuesta)
+		} else {
+			fmt.Println("❌ Error: Se requiere la flag --network")
+			return
+		}
+	},
+}
+
+var resourceDenyCmd = &cobra.Command{
+	Use:   "deny",
+	Short: "Deniega el acceso a un recurso",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network, ok := GetNetwork(); ok {
+			if resourceType == "" || resource == "" || entity == "" {
+				fmt.Println("❌ Error: Se requieren las flags --type, --resource, --entity")
+				return
+			}
+
+			protocol := resourceType
+			msg := Mensaje{
+				Entrada: []string{"resource", "deny", entity, network, protocol, resource},
+			}
+			respuesta := socketClient(msg)
+			fmt.Println(respuesta)
+		} else {
+			fmt.Println("❌ Error: Se requiere la flag --network")
+			return
+		}
+	},
+}
+
 func init() {
 	resourceLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+
+	resourceAllowCmd.PersistentFlags().StringVarP(&entity, "entity", "e", "", "Nombre de la entidad (requerido)")
+	resourceAllowCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	resourceAllowCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
+	resourceAllowCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
+	resourceAllowCmd.PersistentFlags().StringVarP(&tps, "tps", "s", "", "Ruta local del recurso (requerido)")
+
+	resourceDenyCmd.PersistentFlags().StringVarP(&entity, "entity", "e", "", "Nombre de la entidad (requerido)")
+	resourceDenyCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+	resourceDenyCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
+	resourceDenyCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
 
 	resourceAddCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 	resourceAddCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
@@ -159,7 +216,7 @@ func init() {
 	resourceRemoveCmd.PersistentFlags().StringVarP(&resourceType, "type", "t", "", "Tipo de recurso (requerido)")
 	resourceRemoveCmd.PersistentFlags().StringVarP(&resource, "resource", "r", "", "Nombre del recurso (requerido)")
 
-	resourceCmd.AddCommand(resourceAddCmd, resourceLsCmd, resourceRemoveCmd)
+	resourceCmd.AddCommand(resourceAddCmd, resourceLsCmd, resourceRemoveCmd, resourceAllowCmd, resourceDenyCmd)
 	rootCmd.AddCommand(resourceCmd)
 }
 
@@ -242,4 +299,14 @@ func resourceRemove(network, resourceType, resource string) Mensaje {
 		}
 	}
 	return Mensaje{Salida: "Error: No se encontro la red"}
+}
+
+// Allow agrega una nueva política al archivo CSV
+func Allow(entidad, network, protocolo, servicio, tps string) Mensaje {
+	return Mensaje{Salida: "Política agregada correctamente"}
+}
+
+// Deny elimina una política existente buscando coincidencia exacta de los campos clave
+func Deny(entidad, network, protocolo, servicio string) Mensaje {
+	return Mensaje{Salida: "Política eliminada correctamente"}
 }

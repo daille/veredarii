@@ -49,7 +49,6 @@ func (nm *NetworkManager) StartProcess() {
 		order := <-nm.ChannelNetworks
 		switch order {
 		case "init":
-			StartRBAC()
 			for _, network := range nm.Networks {
 				slog.Debug("Iniciando red", "nombre", network.Name)
 				network.Connect()

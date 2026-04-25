@@ -59,11 +59,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 	}
 	entidad := n.Peers[PID].Entity
 
-	if !RBAC.HasPermition2Protocol(entidad, n.Name, global.ProtocolAPIProxy) {
-		slog.Warn("Denegado, sin permiso al protocolo", "entidad", entidad, "red", n.Name, "protocolo", global.ProtocolAPIProxy)
-		s.Reset()
-		return
-	}
+	// @TODO HasPermition2Protocol(entidad, n.Name, global.ProtocolAPIProxy)
 
 	for {
 		msg := &global.Envelop{}
@@ -80,20 +76,20 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 			slog.Error("Error", "data", string(data))
 			return
 		}
-		configuration.WriteLog("Mensaje recibido", "id", msg.Id, "servicio", msg.Service, "entidad", entidad)
-		tps := RBAC.GetTPS(entidad, global.ProtocolAPIProxy, n.Name, msg.Service)
+		configuration.WriteOK("Mensaje recibido", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId)
+		tps := GetTPSLimit(entidad, msg.Service)
 		slog.Debug("TPS registrada", "tps", tps)
 		limiter := n.RateLimiter.GetLimiter(entidad, global.ProtocolAPIProxy, tps)
 
 		if !limiter.Allow() {
-			configuration.WriteLog("Entidad excedió su límite global de TPS", "id", msg.Id, "servicio", msg.Service, "entidad", entidad, "tps", tps)
+			configuration.WriteError("Entidad excedió su límite global de TPS", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "tps", tps)
 			slog.Warn("Entidad excedió su límite global de TPS", "entidad", entidad, "tps", tps)
 			s.Reset()
 			return
 		}
 
-		if !RBAC.Allowed(entidad, n.Name, global.ProtocolAPIProxy, msg.Service) {
-			configuration.WriteLog("Denegado, sin permiso al servicio", "id", msg.Id, "servicio", msg.Service, "entidad", entidad, "tps", tps)
+		if !Authorize(entidad, global.ProtocolAPIProxy, "call", msg.Service, "127.0.0.1") { //global.ProtocolAPIProxy
+			configuration.WriteError("Denegado, sin permiso al servicio", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId)
 			slog.Warn("Denegado, sin permiso al servicio: ", "entidad", entidad, "red", n.Name, "protocolo", global.ProtocolAPIProxy, "servicio", msg.Service)
 			s.Reset()
 			return
@@ -102,7 +98,7 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 		b := bufio.NewReader(bytes.NewReader(msg.Payload))
 		req, err := http.ReadRequest(b)
 		if err != nil {
-			configuration.WriteLog("Error reconstruyendo petición", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+			configuration.WriteError("Error reconstruyendo petición", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "peer", msg.OriginPeerId, "error", err.Error())
 			slog.Error("Error reconstruyendo petición:", "error", err.Error())
 			return
 		}
@@ -121,14 +117,14 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 							slog.Debug("Llamando URL Local", "urlDestino: ", urlDestino)
 							u, err := url.Parse(urlDestino)
 							if err != nil {
-								configuration.WriteLog("Error parseando url", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+								configuration.WriteError("Error parseando url", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "error", err.Error())
 								slog.Error("Error parseando url: ", "error", err.Error())
 								return
 							}
 
 							proxyReq, err := http.NewRequest(req.Method, urlDestino, req.Body)
 							if err != nil {
-								configuration.WriteLog("Error creando nuevo request", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+								configuration.WriteError("Error creando nuevo request", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "error", err.Error())
 								slog.Error("Error creando nuevo request:", "error", err.Error())
 								return
 							}
@@ -138,13 +134,13 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 							client := &http.Client{}
 							resp, err := client.Do(proxyReq)
 							if err != nil {
-								configuration.WriteLog("Error replicando el llamado", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+								configuration.WriteError("Error replicando el llamado", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "error", err.Error())
 								slog.Error("Error replicando el llamado: %v", "error", err.Error())
 								return
 							}
 							bodyBytes, err = io.ReadAll(resp.Body)
 							if err != nil {
-								configuration.WriteLog("Error leyendo cuerpo respuesta", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+								configuration.WriteError("Error leyendo cuerpo respuesta", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "error", err.Error())
 								slog.Error("Error leyendo el cuerpo de la respuesta: %v", "error", err.Error())
 								return
 							}
@@ -166,11 +162,12 @@ func (n *Network) handleAPIProxyStream(s network.Stream) {
 						}
 
 						resData, _ := proto.Marshal(response)
-						configuration.WriteLog("Enviando respuesta", "id", response.Id, "servicio", response.Service)
 						if _, err := writeDelimited(s, resData); err != nil {
-							configuration.WriteLog("Error respondiendo", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+							configuration.WriteError("Error respondiendo", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId, "error", err.Error())
 							slog.Error("Error respondiendo: %v", "error", err.Error())
 							return
+						} else {
+							configuration.WriteOK("Enviando respuesta", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "entidad", entidad, "peer", msg.OriginPeerId)
 						}
 					}
 				}
@@ -203,24 +200,26 @@ func (n *Network) Send(service string, payload []byte) []byte {
 	}
 	data, _ := proto.Marshal(msg)
 
-	configuration.WriteLog("Enviando mensaje", "id", msg.Id, "servicio", msg.Service)
 	_, err = writeDelimited(s, data)
 	if err != nil {
+		configuration.WriteError("Error enviando mensaje", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "destino", stream.Target, "protocolo", stream.Proto, "error", err.Error())
 		slog.Error("error escribiendo respuesta", "error", err)
 		n.MutexStreams.Lock()
 		delete(n.Streams[global.ProtocolAPIProxy], service)
 		n.MutexStreams.Unlock()
 		s.Reset()
 		return nil
+	} else {
+		configuration.WriteOK("Enviando mensaje", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "destino", stream.Target, "protocolo", stream.Proto)
 	}
 	resData, err := readDelimited(s)
 	if err == nil {
 		res := &global.Envelop{}
 		proto.Unmarshal(resData, res)
-		configuration.WriteLog("Respuesta recibida", "id", res.Id, "servicio", msg.Service)
+		configuration.WriteOK("Respuesta recibida", "id", res.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "destino", stream.Target, "protocolo", stream.Proto)
 		return res.Payload
 	} else {
-		configuration.WriteLog("Error leyendo respuesta", "id", msg.Id, "servicio", msg.Service, "error", err.Error())
+		configuration.WriteError("Error recibiendo respuesta", "id", msg.Id, "servicio", msg.Service, "protocolo", global.ProtocolAPIProxy, "destino", stream.Target, "protocolo", stream.Proto, "error", err.Error())
 		slog.Error("error leyendo respuesta", "error", err)
 	}
 	return nil

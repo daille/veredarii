@@ -51,6 +51,7 @@ var key string
 var resourceType string
 var resource string
 var local string
+var tps string
 
 var (
 	teal      = lipgloss.Color("39")

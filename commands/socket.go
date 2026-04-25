@@ -116,6 +116,10 @@ func SocketListener() {
 						respuesta = resourceAdd(m.Entrada[2], m.Entrada[3], m.Entrada[4], m.Entrada[5])
 					case "remove":
 						respuesta = resourceRemove(m.Entrada[2], m.Entrada[3], m.Entrada[4])
+					case "allow":
+						respuesta = Allow(m.Entrada[2], m.Entrada[3], m.Entrada[4], m.Entrada[5], m.Entrada[6])
+					case "deny":
+						respuesta = Deny(m.Entrada[2], m.Entrada[3], m.Entrada[4], m.Entrada[5])
 					default:
 						respuesta = Mensaje{Salida: "Comando no reconocido"}
 					}

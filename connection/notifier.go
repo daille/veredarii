@@ -43,13 +43,10 @@ func (nn *networkNotifiee) ClosedStream(net network.Network, s network.Stream)  
 func (nn *networkNotifiee) Disconnected(net network.Network, c network.Conn) {
 	peerID := c.RemotePeer()
 	nn.n.MutexSesiones.Lock()
-	RBAC.MutexSesiones.Lock()
 	defer nn.n.MutexSesiones.Unlock()
-	defer RBAC.MutexSesiones.Unlock()
 
 	if _, existe := nn.n.SesionesActivas[peerID]; existe {
 		delete(nn.n.SesionesActivas, peerID)
-		delete(RBAC.PeerEntity, peerID.String())
 		slog.Debug("🧹 Sesión eliminada: el peer se ha desconectado", "peer", peerID)
 	}
 }

@@ -81,6 +81,7 @@ func IniciaVeredarii() {
 	}
 	defer localdatabase.DB.Close()
 	go SocketListener()
+	connection.SetupAccessControl()
 
 	slog.Debug("Cargando configuracion...")
 	configuration.CM = configuration.NewConfigurationManager()

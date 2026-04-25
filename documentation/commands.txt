@@ -1,8 +1,8 @@
 [OK] Veredarii version
 [OK] Veredarii run
 [OK] Veredarii connections
----- Veredarii set --network <name>
----- Veredarii get 
+[OK] Veredarii set --network <name>
+[OK] Veredarii get 
 
 [OK] Veredarii create --network <name> --entity <entityName> --port <port>
 [OK] Veredarii ls
@@ -23,7 +23,6 @@
 
 ---- Veredarii resources allow --network <network> --entity <entity> --resource <resource> --tps <tps>
 ---- Veredarii resources deny  --network <network> --entity <entity> --resource <resource> --tps <tps>
-
 
 [OK] Veredarii external ls               
 [OK] Veredarii external add    --network <name> --type <type> --resource <resource> --local <localpath> --handler  <file.wasm>

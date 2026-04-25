@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5
 	github.com/casbin/casbin/v2 v2.135.0
+	github.com/cedar-policy/cedar-go v1.6.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/extism/go-sdk v1.7.1

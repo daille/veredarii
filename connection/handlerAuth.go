@@ -126,7 +126,6 @@ func (n *Network) handleAuthStream(s network.Stream) {
 		s.Reset()
 		return
 	} else {
-		RBAC.SetPeer(*rec)
 		n.Peers[remotePeer] = PeerType{
 			ID:     remotePeer,
 			Entity: rec.EntityName,
