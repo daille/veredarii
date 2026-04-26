@@ -292,14 +292,9 @@ func (n *Network) verificarEntidad(envelopeBytes []byte, remotePeer peer.ID) (*E
 		return nil, fmt.Errorf("la firma de la entidad maestra es inválida")
 	}
 
+	//@TODO AddPrincipalAccessControl(n.Name, rec.EntityName)
 	return rec, nil
 }
-
-/*func esReplay(firma []byte) bool {
-	cache.Lock()
-	defer cache.Unlock()
-	return false
-}*/
 
 func esReplay(firma []byte) bool {
 	key := hex.EncodeToString(firma)

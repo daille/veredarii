@@ -69,12 +69,6 @@ func IniciaVeredarii() {
 	})
 
 	renderBanner(global.Version)
-	/*fmt.Println("\n\n╭────────────────────────────────────────────────────────────────────────╮")
-	fmt.Printf("│%s%-29s│\n", "                                Veredarii  ", "")
-	fmt.Println("│                                                                        │")
-	fmt.Printf("│ Versión: %-62s│\n", global.Version)
-	fmt.Print("╰────────────────────────────────────────────────────────────────────────╯\n\n")
-	*/
 	_, err := localdatabase.NewDatabase("./veredarii_data")
 	if err != nil {
 		slog.Error("Error al crear la base de datos", "error", err.Error())

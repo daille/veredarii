@@ -28,7 +28,11 @@ import (
 	"Veredarii/connection"
 	"Veredarii/global"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -251,6 +255,8 @@ func resourceAdd(network, resourceType, resource, local string) Mensaje {
 			if n, ok := connection.NM.GetNetwork(network); ok {
 				n.AnunciarServicio(context.Background(), resource)
 			}
+
+			connection.AddResourceAccessControl(network, resourceType, resource)
 			return Mensaje{Salida: "Recurso agregado correctamente"}
 		}
 	}
@@ -295,6 +301,7 @@ func resourceRemove(network, resourceType, resource string) Mensaje {
 			}
 			configuration.CM.SaveResources(network)
 
+			connection.RemoveResourceAccessControl(network, resourceType, resource)
 			return Mensaje{Salida: "Recurso eliminado correctamente"}
 		}
 	}
@@ -303,10 +310,215 @@ func resourceRemove(network, resourceType, resource string) Mensaje {
 
 // Allow agrega una nueva política al archivo CSV
 func Allow(entidad, network, protocolo, servicio, tps string) Mensaje {
+	policyFile := network + ".policy"
+	entitiesFile := network + ".entities"
+	protocolo = connection.NormalizeCedarType(protocolo)
+	entidad = strings.ToLower(entidad)
+	servicio = strings.ToLower(servicio)
+
+	// --- Entidades (igual que arriba) ---
+	if err := updateEntities(entitiesFile, entidad, protocolo, servicio, network, tps); err != nil {
+		return Mensaje{Salida: err.Error()}
+	}
+
+	// --- Policy: agregar bloque si no existe ---
+	policyBytes, _ := os.ReadFile(policyFile)
+	policyContent := string(policyBytes)
+
+	newResource := fmt.Sprintf(`%s::"%s"`, protocolo, servicio)
+	newPrincipal := fmt.Sprintf(`User::"%s"`, entidad)
+
+	// Verificar si ya existe exactamente este bloque
+	checkStr := fmt.Sprintf("principal == %s", newPrincipal)
+	if strings.Contains(policyContent, checkStr) && strings.Contains(policyContent, newResource) {
+		return Mensaje{Salida: "El servicio ya está permitido para este usuario"}
+	}
+
+	newBlock := fmt.Sprintf(`
+permit (principal, action == Action::"call", resource)
+when {
+    principal == %s &&
+    resource.network == "%s" &&
+    resource == %s
+};
+`, newPrincipal, network, newResource)
+
+	policyContent += newBlock
+
+	if err := os.WriteFile(policyFile, []byte(policyContent), 0644); err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error escribiendo policy: %v", err)}
+	}
+
+	connection.SetupAccessControl()
 	return Mensaje{Salida: "Política agregada correctamente"}
 }
 
 // Deny elimina una política existente buscando coincidencia exacta de los campos clave
 func Deny(entidad, network, protocolo, servicio string) Mensaje {
+	policyFile := network + ".policy"
+	entitiesFile := network + ".entities"
+	protocolo = connection.NormalizeCedarType(protocolo)
+	entidad = strings.ToLower(entidad)
+	servicio = strings.ToLower(servicio)
+
+	// --- 1. Eliminar bloque del .policy ---
+	policyBytes, err := os.ReadFile(policyFile)
+	if err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error leyendo policy: %v", err)}
+	}
+
+	newPrincipal := fmt.Sprintf(`User::"%s"`, entidad)
+	newResource := fmt.Sprintf(`%s::"%s"`, protocolo, servicio)
+
+	// Separar en bloques por ";" y filtrar el que coincide
+	blocks := strings.Split(string(policyBytes), "};")
+	var kept []string
+	found := false
+	for _, block := range blocks {
+		trimmed := strings.TrimSpace(block)
+		if trimmed == "" {
+			continue
+		}
+		// Si el bloque contiene AMBOS (principal y recurso), es el que eliminamos
+		if strings.Contains(block, newPrincipal) && strings.Contains(block, newResource) {
+			found = true
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+
+	if !found {
+		return Mensaje{Salida: fmt.Sprintf("No se encontró policy para %s sobre %s", entidad, servicio)}
+	}
+
+	newPolicyContent := strings.Join(kept, "\n};\n")
+	if len(kept) > 0 {
+		newPolicyContent += "\n};"
+	}
+
+	if err := os.WriteFile(policyFile, []byte(newPolicyContent+"\n"), 0644); err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error escribiendo policy: %v", err)}
+	}
+
+	// --- 2. Actualizar entities.json ---
+	entitiesBytes, err := os.ReadFile(entitiesFile)
+	if err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error leyendo entidades: %v", err)}
+	}
+
+	var entities []map[string]interface{}
+	if err := json.Unmarshal(entitiesBytes, &entities); err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error parseando entidades: %v", err)}
+	}
+
+	// Quitar el servicio de las quotas del usuario
+	for _, e := range entities {
+		uid := e["uid"].(map[string]interface{})
+		existingID := strings.ToLower(fmt.Sprintf("%v", uid["id"]))
+		if uid["type"] == "User" && existingID == entidad {
+			if attrs, ok := e["attrs"].(map[string]interface{}); ok {
+				if quotas, ok := attrs["quotas"].(map[string]interface{}); ok {
+					delete(quotas, servicio)
+				}
+			}
+		}
+	}
+
+	// Quitar el recurso si ya ningún usuario tiene quota sobre él
+	servicioUsado := false
+	for _, e := range entities {
+		uid := e["uid"].(map[string]interface{})
+		if uid["type"] == "User" {
+			if attrs, ok := e["attrs"].(map[string]interface{}); ok {
+				if quotas, ok := attrs["quotas"].(map[string]interface{}); ok {
+					if _, exists := quotas[servicio]; exists {
+						servicioUsado = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !servicioUsado {
+		// Eliminar la entidad del recurso
+		var filteredEntities []map[string]interface{}
+		for _, e := range entities {
+			uid := e["uid"].(map[string]interface{})
+			existingID := strings.ToLower(fmt.Sprintf("%v", uid["id"]))
+			existingType := strings.ToLower(fmt.Sprintf("%v", uid["type"]))
+			if existingType == strings.ToLower(protocolo) && existingID == servicio {
+				continue // eliminar
+			}
+			filteredEntities = append(filteredEntities, e)
+		}
+		entities = filteredEntities
+	}
+
+	out, err := json.MarshalIndent(entities, "", "    ")
+	if err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error serializando entidades: %v", err)}
+	}
+	if err := os.WriteFile(entitiesFile, out, 0644); err != nil {
+		return Mensaje{Salida: fmt.Sprintf("Error escribiendo entidades: %v", err)}
+	}
+
+	connection.SetupAccessControl()
 	return Mensaje{Salida: "Política eliminada correctamente"}
+}
+
+func updateEntities(file, entidad, protocolo, servicio, network, tps string) error {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("error leyendo entidades: %v", err)
+	}
+
+	var entities []map[string]interface{}
+	if err := json.Unmarshal(data, &entities); err != nil {
+		return fmt.Errorf("error parseando entidades: %v", err)
+	}
+
+	tpsInt, _ := strconv.Atoi(tps)
+
+	// Usuario
+	userFound := false
+	for _, e := range entities {
+		uid := e["uid"].(map[string]interface{})
+		if uid["type"] == "User" && uid["id"] == entidad {
+			userFound = true
+			attrs := e["attrs"].(map[string]interface{})
+			quotas, ok := attrs["quotas"].(map[string]interface{})
+			if !ok {
+				quotas = map[string]interface{}{}
+				attrs["quotas"] = quotas
+			}
+			quotas[servicio] = tpsInt
+		}
+	}
+	if !userFound {
+		entities = append(entities, map[string]interface{}{
+			"uid":     map[string]interface{}{"type": "User", "id": entidad},
+			"attrs":   map[string]interface{}{"quotas": map[string]interface{}{servicio: tpsInt}},
+			"parents": []interface{}{},
+		})
+	}
+
+	// Recurso
+	resFound := false
+	for _, e := range entities {
+		uid := e["uid"].(map[string]interface{})
+		if uid["type"] == protocolo && uid["id"] == servicio {
+			resFound = true
+		}
+	}
+	if !resFound {
+		entities = append(entities, map[string]interface{}{
+			"uid":     map[string]interface{}{"type": protocolo, "id": servicio},
+			"attrs":   map[string]interface{}{"network": network},
+			"parents": []interface{}{},
+		})
+	}
+
+	out, _ := json.MarshalIndent(entities, "", "    ")
+	return os.WriteFile(file, out, 0644)
 }

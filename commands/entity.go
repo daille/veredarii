@@ -98,78 +98,7 @@ var entityLsCmd = &cobra.Command{
 	},
 }
 
-/*
-var newEntityCmd = &cobra.Command{
-	Use:   "new",
-	Short: "Crea una nueva entidad",
-	Run: func(cmd *cobra.Command, args []string) {
-		if name == "" {
-			fmt.Println("❌ Error: Se requiere la flag --name")
-			return
-		}
-
-		priv, pub, err := crypto.GenerateEd25519Key(rand.Reader)
-		if err != nil {
-			fmt.Printf("❌ Error generando llaves: %v\n", err)
-			return
-		}
-		// 2. Serializar llave pública a formato Protobuf (el que tú quieres)
-		pubBytes, _ := crypto.MarshalPublicKey(pub)
-		pubHex := hex.EncodeToString(pubBytes)
-
-		// 3. Serializar llave privada a bytes crudos para el archivo
-		privBytes, _ := crypto.MarshalPrivateKey(priv)
-
-		// 4. Guardar la privada en un archivo nombrado según la entidad
-		fileName := fmt.Sprintf("%s.key", name)
-		err = os.WriteFile(fileName, privBytes, 0600) // 0600: solo lectura/escritura para el dueño
-		if err != nil {
-			fmt.Printf("❌ Error al guardar el archivo: %v\n", err)
-			return
-		}
-
-		// 5. Mostrar resultados
-		fmt.Println("✅ Entidad creada exitosamente")
-		fmt.Printf("📂 Llave privada guardada en: %s\n", fileName)
-		fmt.Printf("🌐 Llave pública (libp2p): %s\n", pubHex)
-
-		configuration.CM = configuration.NewConfigurationManager()
-		cfg := configuration.CM.NewConfig()
-
-		cfg.Identity.Entity = name
-		cfg.Identity.PrivKeyFile = fileName
-		cfg.LocalInterface.Server.Port = "8100"
-		configuration.CM.Save()
-
-		// policy y model
-		err = os.WriteFile("policy.csv", []byte("#  Sujeto     | dominio                 | Objeto (Servicio)     | Acción | TPS\n#p,alice,red_interoperabilidad,api-proxy/1.0.0,hola"), 0600)
-		if err != nil {
-			fmt.Printf("❌ Error al guardar el archivo: %v\n", err)
-			return
-		}
-
-		err = os.WriteFile("model.conf", []byte(`[request_definition]
-r = sub, dom, obj, act
-
-[policy_definition]
-p = sub, dom, obj, act, tps
-
-[policy_effect]
-e = some(where (p.eft == allow))
-
-[matchers]
-m = r.sub == p.sub && r.dom == p.dom && r.obj == p.obj && r.act == p.act`), 0600)
-		if err != nil {
-			fmt.Printf("❌ Error al guardar el archivo: %v\n", err)
-			return
-		}
-
-		fmt.Printf("🚀 Entidad '%s' creada con éxito.\n", name)
-	},
-}*/
-
 func init() {
-	//newEntityCmd.PersistentFlags().StringVarP(&name, "entity", "e", "", "Nombre de la entidad (requerido)")
 	entityLsCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
 
 	entityCmd.AddCommand(entityLsCmd)

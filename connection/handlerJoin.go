@@ -137,6 +137,7 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		return
 	} else {
 		slog.Info("La invitación es válida y se acepta")
-		n.PutCRDT(MEMBERS, invitationSplit[2], joinRequest.PublicKey)
+		AddPrincipalAccessControl(joinRequest.Network, joinRequest.EntityName)
+		n.PutCRDT(MEMBERS, joinRequest.EntityName, joinRequest.PublicKey)
 	}
 }
