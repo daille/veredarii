@@ -4,7 +4,6 @@ package handler
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"Veredarii/configuration"
 	"Veredarii/localinterface/data"
@@ -71,29 +70,41 @@ func GetNetworkMetrics(w http.ResponseWriter, r *http.Request) {
 // ─── GET /api/network/members ─────────────────────────────────────────────────
 
 func GetNetworkMembers(w http.ResponseWriter, r *http.Request) {
-	mw.JSON(w, http.StatusOK, data.Members)
+	var Members = []data.Member{}
+
+	for i, e := range configuration.CM.GetConfig().Networks[0].Entities {
+		Members = append(Members, data.Member{
+			ID:     i,
+			NodeID: e.Key,
+			Name:   e.Name,
+		})
+	}
+
+	mw.JSON(w, http.StatusOK, Members)
 }
 
 // ─── GET /api/network/members/{id} ───────────────────────────────────────────
 
 func GetNetworkMember(w http.ResponseWriter, r *http.Request) {
-	// chi pone el id en la URL: /api/network/members/1
-	// lo extraemos del path manualmente para no importar chi aquí
-	// (los handlers son agnósticos al router)
-	parts := strings.Split(r.URL.Path, "/")
-	id := parts[len(parts)-1]
+	/*
+		// chi pone el id en la URL: /api/network/members/1
+		// lo extraemos del path manualmente para no importar chi aquí
+		// (los handlers son agnósticos al router)
+		parts := strings.Split(r.URL.Path, "/")
+		id := parts[len(parts)-1]
 
-	for _, m := range data.Members {
-		if strings.EqualFold(id, strings.TrimSpace(
-			// comparamos contra el string del ID numérico
-			func() string {
-				return http.StatusText(m.ID) // truco: usamos el campo ID
-			}(),
-		)) {
-			mw.JSON(w, http.StatusOK, m)
-			return
+		for _, m := range configuration.CM.GetConfig().Networks[0].Entities {
+
+			if strings.EqualFold(id, strings.TrimSpace(
+				// comparamos contra el string del ID numérico
+				func() string {
+					return http.StatusText(m.Key) // truco: usamos el campo ID
+				}(),
+			)) {
+				mw.JSON(w, http.StatusOK, m)
+				return
+			}
 		}
-	}
-	// búsqueda por ID numérico desde el path param inyectado por chi
+		// búsqueda por ID numérico desde el path param inyectado por chi*/
 	mw.Error(w, http.StatusNotFound, "miembro no encontrado")
 }

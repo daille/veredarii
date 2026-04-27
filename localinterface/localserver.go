@@ -78,7 +78,7 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   configuration.CM.GetConfig().LocalInterface.Server.Host,
+		//AllowedOrigins:   configuration.CM.GetConfig().LocalInterface.Server.Host,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -190,20 +190,37 @@ func (n *LocalServer) setupRouter() (iplocal string) {
 
 func SecurityAPIMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Verificar que el host sea local
-		// Nota: r.Host puede ser "localhost:8080" o "127.0.0.1:8080"
-		isLocal := r.Host == "localhost:8080" || r.Host == "127.0.0.1:8080"
+		port := configuration.CM.GetConfig().LocalInterface.Server.Port
+		allowedHosts := configuration.CM.GetConfig().LocalInterface.Server.Host
 
+		isLocal := false
+		for _, host := range allowedHosts {
+			if r.Host == host+":"+port {
+				isLocal = true
+				break
+			}
+		}
 		if !isLocal {
 			http.Error(w, "Acceso denegado: Solo conexiones locales permitidas.", http.StatusForbidden)
 			return
 		}
 
-		// 2. Opcional: Verificar el Header Origin si viene de un navegador
 		origin := r.Header.Get("Origin")
-		if origin != "" && origin != "http://localhost:3000" { // puerto de tu front
-			http.Error(w, "Origin no autorizado", http.StatusForbidden)
-			return
+		if origin != "" {
+			allowedOrigins := configuration.CM.GetConfig().LocalInterface.Server.Host
+			isAllowed := false
+
+			for _, ao := range allowedOrigins {
+				if origin == ao {
+					isAllowed = true
+					break
+				}
+			}
+
+			if !isAllowed {
+				http.Error(w, "Origin no autorizado", http.StatusForbidden)
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)

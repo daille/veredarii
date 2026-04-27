@@ -227,17 +227,6 @@ func GetMetrics(period string) NetworkMetrics {
 	}
 }
 
-var Members = []Member{
-	{ID: 1, Name: "Servicio Nacional de Salud", NodeID: "vrd-a1b2-sns", Type: "Gobierno", TypeKey: "api", Country: "Chile", Resources: 14, LastSeen: "hace 2min", Status: "active"},
-	{ID: 2, Name: "Registro Civil e Identificación", NodeID: "vrd-c3d4-rci", Type: "Gobierno", TypeKey: "api", Country: "Chile", Resources: 9, LastSeen: "hace 5min", Status: "active"},
-	{ID: 3, Name: "Municipalidad de Santiago", NodeID: "vrd-e5f6-mun", Type: "Municipal", TypeKey: "topic", Country: "Chile", Resources: 6, LastSeen: "hace 1h", Status: "active"},
-	{ID: 4, Name: "Ministerio de Hacienda", NodeID: "vrd-g7h8-mhac", Type: "Gobierno", TypeKey: "api", Country: "Chile", Resources: 22, LastSeen: "hace 3min", Status: "active"},
-	{ID: 5, Name: "Agencia Digital Argentina", NodeID: "vrd-i9j0-ada", Type: "Internacional", TypeKey: "db", Country: "Argentina", Resources: 5, LastSeen: "hace 2h", Status: "active"},
-	{ID: 6, Name: "Ministerio TIC Colombia", NodeID: "vrd-k1l2-col", Type: "Internacional", TypeKey: "db", Country: "Colombia", Resources: 3, LastSeen: "hace 1d", Status: "inactive"},
-	{ID: 7, Name: "Serviu Región Metropolitana", NodeID: "vrd-m3n4-srv", Type: "Regional", TypeKey: "file", Country: "Chile", Resources: 8, LastSeen: "hace 20min", Status: "active"},
-	{ID: 8, Name: "SII - Impuestos Internos", NodeID: "vrd-o5p6-sii", Type: "Gobierno", TypeKey: "stream", Country: "Chile", Resources: 18, LastSeen: "hace 1min", Status: "active"},
-}
-
 // ProvidedResources es mutable (POST/PUT/DELETE/PATCH lo modifican)
 var ProvidedResources = []Resource{
 	{ID: 1, Name: "API Ciudadanos", Type: "api", Path: "/api/v1/ciudadanos", Version: "v1.2", Description: "Consulta datos de ciudadanos registrados", Consumers: 8, Enabled: true, Auth: "token", Visibility: "public", RateLimit: 500, SLA: 99.9, BackendURL: "http://svc-ciudadanos:3000", Format: "json", Tags: "ciudadanos,identidad", Contact: "api@mi-org.cl", DocsURL: "https://docs.mi-org.cl/ciudadanos"},

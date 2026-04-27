@@ -23,7 +23,7 @@ func GetProvidedResources(w http.ResponseWriter, r *http.Request) {
 			Name:        res.Name,
 			Type:        "API",
 			Controlador: res.Plugin,
-			Path:        cfg.ResourcesPath,
+			Path:        res.ResourcePath,
 			Description: res.Plugin,
 			Consumers:   8,
 			//Version:     "v1.2",
@@ -44,7 +44,7 @@ func GetProvidedResources(w http.ResponseWriter, r *http.Request) {
 			Name:        res.Name,
 			Type:        "TOPIC",
 			Controlador: res.Plugin,
-			Path:        cfg.ResourcesPath,
+			Path:        res.ResourcePath,
 			Description: res.Plugin,
 			Consumers:   8,
 		})
