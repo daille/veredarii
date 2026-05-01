@@ -26,6 +26,7 @@ SOFTWARE.
 import (
 	"Veredarii/configuration"
 	global "Veredarii/global"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,7 +72,6 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		slog.Error("Error leyendo solicitud:", "error", err)
 		return
 	}
-
 	slog.Debug("Solicitud recibida:", "body", string(body))
 
 	var joinRequest JoinRequest
@@ -89,11 +89,10 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		return
 	}
 
-	passphrase := "mi frase super secreta para la red"
-	salt := "mi-red-p2p-secreta-unique-salt"
-	key := global.GenerarLlaveDesdeFrase(passphrase, salt)
-
 	invitationSplit := strings.Split(joinRequest.Invitation, "|")
+	passphrase := n.GetValidator()
+	salt := joinRequest.EntityName + ExtraerSalt(invitationSplit[1])
+	key := global.GenerarLlaveDesdeFrase(passphrase, salt)
 	invitation := global.DecipherInvitation(invitationSplit[0]+"|"+invitationSplit[1], joinRequest.InviterName, key)
 	slog.Info("Invitación descifrada", "invitation", invitation)
 	invitationSplit = strings.Split(invitation, ";")
@@ -140,4 +139,18 @@ func (n *Network) handleJoinStream(s network.Stream) {
 		AddPrincipalAccessControl(joinRequest.Network, joinRequest.EntityName)
 		n.PutCRDT(MEMBERS, joinRequest.EntityName, joinRequest.PublicKey)
 	}
+}
+
+func ExtraerSalt(b64Input string) string {
+	decodedBytes, err := base64.StdEncoding.DecodeString(b64Input)
+	if err != nil {
+		return ""
+	}
+	decodedStr := string(decodedBytes)
+	decodedStr = strings.TrimSuffix(decodedStr, "/")
+	partes := strings.Split(decodedStr, "/")
+	if len(partes) == 0 {
+		return ""
+	}
+	return partes[len(partes)-1]
 }

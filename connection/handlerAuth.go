@@ -133,6 +133,17 @@ func (n *Network) handleAuthStream(s network.Stream) {
 		if err != nil {
 			slog.Error("Error serializando sobre", "error", err)
 		} else {
+
+			v, err := json.Marshal(global.AcceptedType{
+				Accepted:  true,
+				Validator: n.GetValidator(),
+			})
+			if err != nil {
+				s.Write([]byte("{}"))
+			} else {
+				s.Write(v)
+			}
+
 			pr := PeerRequest{
 				PeerID:     remotePeer.String(),
 				EntityName: rec.EntityName,
@@ -202,8 +213,15 @@ func (n *Network) Authenticar(ctx context.Context, priv crypto.PrivKey, peerID p
 	resp, err := io.ReadAll(sAuth)
 	if err != nil {
 		slog.Error("Error al leer la respuesta", "error", err)
+	} else {
+		var accepted global.AcceptedType
+		if err := json.Unmarshal(resp, &accepted); err != nil {
+			slog.Error("Error al deserializar la respuesta", "error", err)
+		} else {
+			slog.Info("El servidor aceptó la autenticación", "respuesta", accepted)
+		}
+		n.SetValidator(accepted.Validator)
 	}
-	slog.Info("El servidor aceptó la autenticación", "respuesta", resp)
 	sAuth.Close()
 	return nil
 }

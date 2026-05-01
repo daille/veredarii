@@ -46,3 +46,8 @@ type InvitacionType struct {
 	Expiration time.Time
 	Signature  string
 }
+
+type AcceptedType struct {
+	Accepted  bool   `json:"accepted"`
+	Validator string `json:"validator"`
+}

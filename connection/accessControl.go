@@ -47,31 +47,55 @@ func SetupAccessControl() {
 		slog.Error("Error leyendo políticas", "error", err)
 	}
 
-	for i, file := range files {
+	if len(files) == 0 {
+		defaultDeny := `forbid(principal, action, resource);`
+		var p cedar.Policy
+		_ = p.UnmarshalCedar([]byte(defaultDeny))
+		PolicySet.Add("default_deny", &p)
+		slog.Info("⚠️ Sistema operando en modo 'Safe Deny': No se encontraron políticas.")
+	}
+
+	policyIdx := 0
+	for _, file := range files {
 		policyBytes, err := os.ReadFile(file)
 		if err != nil {
 			slog.Error("Error leyendo política", "file", file, "error", err)
+			continue
 		}
 
-		cleanPolicy := strings.ReplaceAll(string(policyBytes), "\u00a0", " ")
+		// Limpiar caracteres invisibles y links de Notion
+		content := strings.ReplaceAll(string(policyBytes), "\u00a0", " ")
+		re := regexp.MustCompile(`\[([^\]]+)\]\(https?://[^\)]+\)`)
+		content = re.ReplaceAllString(content, "$1")
 
-		policyFromDB := strings.TrimSpace(cleanPolicy)
-		if policyFromDB != "" {
-			var p cedar.Policy
-			if err := p.UnmarshalCedar([]byte(policyFromDB)); err != nil {
-				slog.Error("Error parseando política", "file", file, "error", err)
-			} else {
-				policyID := cedar.PolicyID(fmt.Sprintf("policy%d", i))
-				PolicySet.Add(policyID, &p)
+		// Dividir en bloques individuales por "permit" o "forbid"
+		reBlock := regexp.MustCompile(`(?ms)(permit|forbid)\s*\(.*?\)\s*(?:when\s*\{.*?\})?\s*;`)
+		blocks := reBlock.FindAllString(content, -1)
+
+		if len(blocks) == 0 {
+			slog.Warn("No se encontraron políticas válidas", "file", file)
+			continue
+		}
+
+		for _, block := range blocks {
+			trimmed := strings.TrimSpace(block)
+			if trimmed == "" {
+				continue
 			}
-		} else {
-			defaultDeny := `forbid(principal, action, resource);`
+
 			var p cedar.Policy
-			_ = p.UnmarshalCedar([]byte(defaultDeny))
-			PolicySet.Add("default_deny", &p)
-			slog.Info("⚠️ Sistema operando en modo 'Safe Deny': No se encontraron políticas.")
+			if err := p.UnmarshalCedar([]byte(trimmed)); err != nil {
+				slog.Error("Error parseando política", "file", file, "block", trimmed, "error", err)
+				continue
+			}
+
+			policyID := cedar.PolicyID(fmt.Sprintf("policy%d", policyIdx))
+			PolicySet.Add(policyID, &p)
+			slog.Debug("Policy cargada", "id", policyID, "file", file)
+			policyIdx++
 		}
 	}
+	slog.Info("Policies cargadas", "total", policyIdx)
 
 	entitiesBytes, err := os.ReadFile("red_interoperabilidad.entities")
 	if err != nil {
@@ -91,8 +115,12 @@ func Authorize(usuario, protocolo, accion, recurso, ip string) bool {
 		}),
 	}
 
-	decision, _ := cedar.Authorize(PolicySet, Entities, req)
-
+	decision, diagnostic := cedar.Authorize(PolicySet, Entities, req)
+	if decision == cedar.Allow {
+		slog.Info("Autorizado", "diagnostic", diagnostic)
+	} else {
+		slog.Error("No autorizado", "diagnostic", diagnostic)
+	}
 	return (decision == cedar.Allow)
 }
 

@@ -24,6 +24,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import (
+	"Veredarii/connection"
+	"Veredarii/global"
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +37,44 @@ var networkCmd = &cobra.Command{
 	Short: "Operaciones de red",
 }
 
+var networkSetValidatorCmd = &cobra.Command{
+	Use:   "set-validator",
+	Short: "Genera una llave de validacion para la red",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requiere la flag --network")
+			return
+		}
+		keyValidator, err := global.GenerarStringAleatorio(64)
+		if err != nil {
+			fmt.Println("Error al generar la llave:", err)
+			return
+		}
+		connection.SetValidator(network, keyValidator)
+	},
+}
+
+var networkGetValidatorCmd = &cobra.Command{
+	Use:   "get-validator",
+	Short: "Obtiene la llave de validacion de la red",
+	Run: func(cmd *cobra.Command, args []string) {
+		if network == "" {
+			fmt.Println("❌ Error: Se requiere la flag --network")
+			return
+		}
+		keyValidator := connection.GetValidator(network)
+		if keyValidator == "" {
+			fmt.Println("Error al obtener la llave")
+			return
+		}
+		fmt.Println("Llave de validacion:", keyValidator)
+	},
+}
+
 func init() {
+	networkCmd.PersistentFlags().StringVarP(&network, "network", "n", "", "Nombre de la red (requerido)")
+
+	networkCmd.AddCommand(networkSetValidatorCmd)
+	networkCmd.AddCommand(networkGetValidatorCmd)
 	rootCmd.AddCommand(networkCmd)
 }

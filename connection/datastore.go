@@ -52,7 +52,6 @@ const PEERS string = "peers"
 const MEMBERS string = "members"
 
 func (n *Network) NewDataStore() (*crdt.Datastore, *dspebble.Datastore) {
-
 	ds, err := dspebble.NewDatastore("store/"+n.Name+".db", nil)
 	if err != nil {
 		slog.Error("No se pudo inicializar el datastore", "error", err)
@@ -202,4 +201,55 @@ func (n *Network) PutHookHandler() {
 			continue
 		}
 	}
+}
+
+func (n *Network) GetValidator() string {
+	k := datastore.NewKey("/innercfg/validator")
+	validator, err := n.PebbleStore.Get(context.Background(), k)
+	if err != nil {
+		slog.Error("Error al obtener el validator", "error", err)
+		return ""
+	}
+
+	return string(validator)
+}
+
+func GetValidator(network string) string {
+	ds, err := dspebble.NewDatastore("store/"+network+".db", nil)
+	if err != nil {
+		slog.Error("No se pudo inicializar el datastore", "error", err)
+		return ""
+	}
+	defer ds.Close()
+	k := datastore.NewKey("/innercfg/validator")
+	validator, err := ds.Get(context.Background(), k)
+	if err != nil {
+		slog.Error("Error al obtener el validator", "error", err)
+		return ""
+	}
+
+	return string(validator)
+}
+
+func (n *Network) SetValidator(validator string) {
+	k := datastore.NewKey("/innercfg/validator")
+	err := n.PebbleStore.Put(context.Background(), k, []byte(validator))
+	if err != nil {
+		slog.Error("Error al guardar", "error", err)
+	}
+}
+
+func SetValidator(network string, validator string) {
+	ds, err := dspebble.NewDatastore("store/"+network+".db", nil)
+	if err != nil {
+		slog.Error("No se pudo inicializar el datastore", "error", err)
+		return
+	}
+
+	k := datastore.NewKey("/innercfg/validator")
+	err = ds.Put(context.Background(), k, []byte(validator))
+	if err != nil {
+		slog.Error("Error al guardar", "error", err)
+	}
+	ds.Close()
 }

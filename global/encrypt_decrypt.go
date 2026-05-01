@@ -204,3 +204,11 @@ func ParsePubKeyRecibida(pubString string) (crypto.PubKey, error) {
 
 	return pubKey, nil
 }
+
+func GenerarStringAleatorio(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}

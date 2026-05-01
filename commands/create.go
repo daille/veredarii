@@ -25,6 +25,7 @@ SOFTWARE.
 */
 import (
 	"Veredarii/configuration"
+	"Veredarii/connection"
 	"Veredarii/global"
 	"crypto/rand"
 	"encoding/hex"
@@ -53,12 +54,18 @@ var createCmd = &cobra.Command{
 			fmt.Println("Error al generar la llave:", err)
 			return
 		}
-
+		keyValidator, err := global.GenerarStringAleatorio(64)
+		if err != nil {
+			fmt.Println("Error al generar la llave:", err)
+			return
+		}
+		connection.SetValidator(network, keyValidator)
 		fmt.Println("Llave de la red:", hex.EncodeToString(key))
+		fmt.Println("Llave de validacion:", keyValidator)
 
 		fmt.Println("Cargando configuracion...")
 		configuration.CM = configuration.NewConfigurationManager()
-		err := configuration.CM.LoadConfig()
+		err = configuration.CM.LoadConfig()
 		if err != nil {
 			fmt.Println("Error cargando configuracion:", err)
 			return

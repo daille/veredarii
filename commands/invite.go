@@ -25,10 +25,12 @@ SOFTWARE.
 */
 import (
 	"Veredarii/configuration"
+	"Veredarii/connection"
 	"Veredarii/global"
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -53,8 +55,8 @@ var inviteCmd = &cobra.Command{
 		}
 		config := configuration.CM.GetConfig()
 
-		passphrase := "mi frase super secreta para la red"
-		salt := "mi-red-p2p-secreta-unique-salt"
+		passphrase := connection.GetValidator(network)
+		salt := entity + extraerFinal(config.Networks[0].Pivots[0])
 
 		aesKey := global.GenerarLlaveDesdeFrase(passphrase, salt)
 
@@ -107,4 +109,13 @@ func init() {
 	inviteCmd.PersistentFlags().StringVarP(&entity, "entity", "e", "", "Nombre de la entidad (requerido)")
 
 	rootCmd.AddCommand(versionCmd)
+}
+
+func extraerFinal(str string) string {
+	str = strings.TrimSuffix(str, "/")
+	partes := strings.Split(str, "/")
+	if len(partes) == 0 {
+		return ""
+	}
+	return partes[len(partes)-1]
 }
